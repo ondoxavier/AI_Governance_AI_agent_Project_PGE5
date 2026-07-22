@@ -8,7 +8,7 @@ src/agent.py
   |
   |-- Observability
   |     Langfuse si configure
-  |     LocalTracer-compatible fallback sinon
+  |     fallback local sinon
   |
   |-- Guardrail L1
   |     validation type/longueur
@@ -20,9 +20,10 @@ src/agent.py
   |     refus des actions inconnues ou sensibles
   |
   |-- Retrieval / MCP Tool
-  |     hybrid_search(query, top_k, data_dir, jurisdiction)
+  |     hybrid_search(query, top_k, data_dir, jurisdiction, mode)
+  |     baseline dense-only
   |     BM25 + dense + RRF + reranking
-  |     fallback corpus integre si index_data/ absent
+  |     fallback corpus local si index_data/ absent
   |
   |-- Reasoning
   |     self_consistency(question, contexts, k=3)
@@ -43,6 +44,14 @@ AgentResponse
   warnings
   trace_id
   latency_ms
+
+src/evaluate.py
+  |
+  |-- 10 questions UE / US / UK
+  |-- baseline dense top-1
+  |-- final BM25 + dense + RRF + rerank
+  |-- latence, cout local, appels outils, TokenBudget
+  |-- export evaluation/latest_results.json
 ```
 
 ## Serveur MCP
@@ -66,7 +75,7 @@ FastMCP("ai-governance-agent")
   |     applique L1 avant execution d'outils ou raisonnement
   |
   |-- compare_jurisdiction
-        appelle hybrid_search trois fois, sequentiellement :
+        appelle hybrid_search trois fois :
         1. jurisdiction="EU"
         2. jurisdiction="US"
         3. jurisdiction="UK"
@@ -75,8 +84,7 @@ FastMCP("ai-governance-agent")
 
 Le choix de ne pas paralleliser `compare_jurisdiction` est volontaire : le
 retrieval peut charger des modeles ou caches partages (`sentence-transformers`,
-cross-encoder). Les trois appels sequentiels gardent un ordre deterministe et
-evitent de supposer que ces ressources sont thread-safe.
+cross-encoder). Les trois appels sequentiels gardent un ordre deterministe.
 
 ## Composants
 
@@ -92,16 +100,19 @@ L'absence de Langfuse ne casse jamais l'import ou l'execution.
 
 `retrieval.py` implemente la recherche hybride demandee. En mode production,
 l'index genere par `src/ingest.py` fournit les chunks parent-enfant avec
-metadata juridique. En mode fallback, un petit corpus local permet de lancer
-l'agent depuis un clone vierge.
+metadata juridique. En mode fallback, les fichiers Markdown de `data/` et des
+README de corpus permettent de lancer l'agent depuis un clone vierge.
 
 `guardrails.py` contient le filtre L1, la matrice L4 et `TokenBudget`. Les tests
 de securite verifient les prompt injections, les actions inconnues/sensibles et
 les depassements de budget.
 
 `reasoning.py` produit la synthese structuree et l'agent critique deterministe.
-La partie B ne remplace pas ce moteur : elle l'appelle via les signatures
-publiques gelees.
+
+`evaluate.py` produit les mesures utilisees dans le rapport. Le mode baseline
+correspond a une recherche dense top-1 sans RRF ni reranking. La version finale
+utilise le pipeline hybride et mesure aussi la latence, les appels d'outils et
+le declenchement du `TokenBudget`.
 
 Chaque reponse d'analyse reglementaire contient le disclaimer :
 

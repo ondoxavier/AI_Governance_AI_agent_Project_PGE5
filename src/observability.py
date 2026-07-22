@@ -9,7 +9,9 @@ duration lines for demos and tests.
 from __future__ import annotations
 
 from contextlib import contextmanager
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
+from pathlib import Path
+import json
 import os
 import socket
 from time import perf_counter
@@ -185,6 +187,21 @@ class Tracer:
                 flush()
             except Exception:
                 self.provider = "local"
+
+    def export_jsonl(self, path: str | Path) -> Path:
+        """Export local span records for reports and offline inspection."""
+        output = Path(path)
+        output.parent.mkdir(parents=True, exist_ok=True)
+        with output.open("w", encoding="utf-8") as handle:
+            for event in self.events:
+                record = {
+                    **asdict(event),
+                    "trace_id": self.trace_id,
+                    "agent_version": self.agent_version,
+                    "provider": self.provider,
+                }
+                handle.write(json.dumps(record, ensure_ascii=False) + "\n")
+        return output
 
 
 def create_tracer(trace_name: str = "agent.run", metadata: Mapping[str, Any] | None = None) -> Tracer:
