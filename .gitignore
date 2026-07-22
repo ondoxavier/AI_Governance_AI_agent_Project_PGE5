@@ -40,8 +40,9 @@ error_log.txt
 out.txt
 err.txt
 
-# Generated vector indexes
+# Generated ingestion artifacts (regenerable via python src/ingest.py)
 index_data/
+processed_txt/
 *.faiss
 *.hnsw
 embeddings_cache/

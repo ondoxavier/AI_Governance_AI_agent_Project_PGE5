@@ -16,7 +16,7 @@ Détail des documents et de leur statut (obligatoire / volontaire / recommandati
 
 > **Règle de conception impérative** : l'agent ne doit jamais présenter une comparaison entre juridictions comme une vérité juridique universelle. Chaque affirmation produite doit préciser sa source, sa date et son statut (obligatoire, volontaire, projet ou recommandation) — voir `src/reasoning.py`.
 
-> **Note d'état actuel** : le socle de recherche (`src/retrieval.py`) lit aujourd'hui les fichiers `.md`/`.txt` de `data/`. Les corpus PDF ci-dessus sont téléchargés mais **pas encore extraits/ingérés** — l'extraction PDF → texte et le chunking parent-enfant sur ce corpus réel sont la prochaine étape du pipeline.
+> **État actuel** : le pipeline d'ingestion (`src/ingest.py`) extrait les PDF des 3 juridictions et construit l'index hybride (~3 000 chunks parent-enfant). `src/retrieval.py` interroge cet index (BM25 + dense + RRF + cross-encoder) avec filtre par juridiction, et bascule automatiquement sur un petit corpus de démonstration si l'index n'a pas encore été construit.
 
 ## Installation
 
@@ -44,6 +44,16 @@ Si l'exécution de scripts PowerShell est bloquée, utilisez directement le Pyth
 .\.venv\Scripts\python.exe -m pip install -r requirements.txt
 .\.venv\Scripts\python.exe src\agent.py
 ```
+
+## Construire l'index RAG (une fois après le clone)
+
+```bash
+python src/ingest.py
+```
+
+Ce script : (1) extrait le texte des PDF de `data/*/` vers `processed_txt/` (avec cache — relance rapide), (2) découpe selon la structure juridique (Article/Chapitre/Considérant) en chunks parent-enfant, (3) calcule les embeddings (`all-MiniLM-L6-v2`) et écrit l'index dans `index_data/` (git-ignoré, régénérable).
+
+Sans cet index, l'agent fonctionne quand même en **mode dégradé** (petit corpus de démonstration intégré, méthode marquée `fallback-demo` dans les résultats) — utile pour vérifier l'installation, insuffisant pour de vraies réponses.
 
 ## Exécution
 

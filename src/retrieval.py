@@ -1,15 +1,39 @@
-"""Hybrid retrieval: BM25, local dense vectors, RRF and reranking."""
+"""Hybrid retrieval: BM25 + dense embeddings + RRF fusion + cross-encoder reranking.
+
+Two operating modes, selected automatically:
+
+1. INDEX mode (production) — used when `index_data/` exists (built by
+   `python src/ingest.py`) and the ML dependencies are installed.
+   BM25 (rank_bm25) + dense (sentence-transformers, cosine over a
+   pre-computed normalised matrix) + RRF + cross-encoder reranking.
+   Parent/child: children are indexed and matched; each result carries its
+   parent legal block in `document.context` for richer LLM context.
+
+2. FALLBACK mode (offline demo) — pure-python BM25 + hashed vectors over the
+   .md/.txt files in data/. No dependency, no index. Keeps a fresh clone
+   runnable before ingestion; clearly labelled in `SearchResult.method`.
+
+Public API (stable — used by agent.py, mcp_server.py, reasoning.py, tests):
+    Document, SearchResult, hybrid_search(query, top_k=4, data_dir="data",
+    jurisdiction=None)
+"""
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+import json
+from dataclasses import dataclass, field
 from hashlib import blake2b
 from math import log, sqrt
 from pathlib import Path
 import re
 
-
 TOKEN_RE = re.compile(r"[a-zA-ZÀ-ÿ0-9_]+")
+ROOT = Path(__file__).resolve().parents[1]
+INDEX_DIR = ROOT / "index_data"
+
+EMBED_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
+RERANK_MODEL = "cross-encoder/ms-marco-MiniLM-L-6-v2"
+INITIAL_TOP_K = 24   # candidates fetched per ranking before fusion/rerank
 
 
 @dataclass(frozen=True)
@@ -19,6 +43,9 @@ class Document:
     text: str
     source: str
     parent_id: str | None = None
+    context: str = ""          # parent legal block (INDEX mode)
+    jurisdiction: str = ""     # EU / US / UK
+    status: str = ""           # obligatoire / volontaire / recommandation / ...
 
 
 @dataclass(frozen=True)
@@ -28,11 +55,127 @@ class SearchResult:
     method: str
 
 
+def tokenize(text: str) -> list[str]:
+    return [token.casefold() for token in TOKEN_RE.findall(text or "")]
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  INDEX mode — real hybrid retrieval over the ingested corpus
+# ══════════════════════════════════════════════════════════════════════════════
+
+class _IndexRetriever:
+    """Lazy singleton holding the index, BM25, embedder and reranker in memory."""
+
+    _instance: "_IndexRetriever | None" = None
+    _failed = False
+
+    def __init__(self):
+        import numpy as np
+        from rank_bm25 import BM25Okapi
+        from sentence_transformers import SentenceTransformer
+
+        self.np = np
+        self.chunks: list[dict] = json.loads(
+            (INDEX_DIR / "chunks.json").read_text(encoding="utf-8"))
+        self.embeddings = np.load(INDEX_DIR / "embeddings.npy")  # (N, d) L2-normalised
+        self.bm25 = BM25Okapi([tokenize(c["text"]) for c in self.chunks])
+        self.embedder = SentenceTransformer(EMBED_MODEL)
+
+        try:
+            from sentence_transformers import CrossEncoder
+            self.reranker = CrossEncoder(RERANK_MODEL)
+        except Exception:
+            self.reranker = None  # rerank falls back to fused order
+
+    @classmethod
+    def get(cls) -> "_IndexRetriever | None":
+        if cls._instance is not None:
+            return cls._instance
+        if cls._failed:
+            return None
+        if not (INDEX_DIR / "chunks.json").exists() or not (INDEX_DIR / "embeddings.npy").exists():
+            cls._failed = True
+            return None
+        try:
+            cls._instance = cls()
+        except Exception:
+            cls._failed = True   # missing ML deps -> fallback mode
+            return None
+        return cls._instance
+
+    # ── rankings ─────────────────────────────────────────────────────────────
+
+    def _candidate_ids(self, jurisdiction: str | None) -> list[int]:
+        if not jurisdiction or jurisdiction.lower() == "all":
+            return list(range(len(self.chunks)))
+        jur = jurisdiction.upper()
+        return [i for i, c in enumerate(self.chunks) if c["jurisdiction"] == jur]
+
+    def search(self, query: str, top_k: int, jurisdiction: str | None) -> list[SearchResult]:
+        np = self.np
+        ids = self._candidate_ids(jurisdiction)
+        if not ids:
+            return []
+
+        # BM25 ranking (restricted to candidates)
+        bm25_all = self.bm25.get_scores(tokenize(query))
+        bm25_rank = sorted(ids, key=lambda i: bm25_all[i], reverse=True)[:INITIAL_TOP_K]
+
+        # Dense ranking: cosine = dot product (embeddings are L2-normalised)
+        q = self.embedder.encode([query], convert_to_numpy=True, normalize_embeddings=True)[0]
+        sims = self.embeddings @ q
+        dense_rank = sorted(ids, key=lambda i: float(sims[i]), reverse=True)[:INITIAL_TOP_K]
+
+        # RRF fusion (k=60)
+        rrf: dict[int, float] = {}
+        for ranking in (bm25_rank, dense_rank):
+            for rank, idx in enumerate(ranking, start=1):
+                rrf[idx] = rrf.get(idx, 0.0) + 1.0 / (60 + rank)
+        fused = sorted(rrf, key=rrf.get, reverse=True)[:INITIAL_TOP_K]
+
+        # Cross-encoder reranking of the fused pool
+        method = "bm25+dense+rrf"
+        if self.reranker is not None:
+            pairs = [(query, self.chunks[i]["text"]) for i in fused]
+            ce_scores = self.reranker.predict(pairs)
+            order = sorted(zip(fused, ce_scores), key=lambda t: float(t[1]), reverse=True)
+            method += "+cross-encoder"
+        else:
+            order = [(i, rrf[i]) for i in fused]
+
+        results = []
+        for idx, score in order[:top_k]:
+            c = self.chunks[idx]
+            title_bits = [c["doc_id"]]
+            if c["article"]:
+                title_bits.append(c["article"])
+            elif c["chapter"]:
+                title_bits.append(c["chapter"])
+            results.append(SearchResult(
+                Document(
+                    doc_id=c["chunk_id"],
+                    parent_id=c["doc_id"],
+                    title=" — ".join(title_bits),
+                    text=c["text"],
+                    context=c.get("parent_text", ""),
+                    source=f"{c['jurisdiction']} · {c['corpus']} · statut: {c['status']}",
+                    jurisdiction=c["jurisdiction"],
+                    status=c["status"],
+                ),
+                float(score),
+                method,
+            ))
+        return results
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  FALLBACK mode — dependency-free demo retrieval (pre-ingestion clones)
+# ══════════════════════════════════════════════════════════════════════════════
+
 DEFAULT_CORPUS = [
     Document(
-        doc_id="ai-act-high-risk",
-        title="AI Act - Haut risque",
-        source="corpus intégré",
+        doc_id="ai-act-high-risk", title="AI Act - Haut risque", source="corpus intégré",
+        jurisdiction="EU", status="obligatoire",
         text=(
             "Les systèmes IA utilisés dans l'emploi, l'éducation, le crédit, "
             "les services essentiels, la migration, la justice ou les infrastructures "
@@ -42,9 +185,8 @@ DEFAULT_CORPUS = [
         ),
     ),
     Document(
-        doc_id="ai-act-limited-risk",
-        title="AI Act - Risque limité",
-        source="corpus intégré",
+        doc_id="ai-act-limited-risk", title="AI Act - Risque limité", source="corpus intégré",
+        jurisdiction="EU", status="obligatoire",
         text=(
             "Les systèmes IA qui interagissent avec des personnes ou produisent "
             "du contenu synthétique imposent des obligations de transparence. "
@@ -52,9 +194,8 @@ DEFAULT_CORPUS = [
         ),
     ),
     Document(
-        doc_id="ai-act-prohibited",
-        title="AI Act - Usages interdits",
-        source="corpus intégré",
+        doc_id="ai-act-prohibited", title="AI Act - Usages interdits", source="corpus intégré",
+        jurisdiction="EU", status="obligatoire",
         text=(
             "Les usages interdits comprennent la manipulation subliminale, "
             "l'exploitation de vulnérabilités, certaines notations sociales et "
@@ -62,10 +203,6 @@ DEFAULT_CORPUS = [
         ),
     ),
 ]
-
-
-def tokenize(text: str) -> list[str]:
-    return [token.casefold() for token in TOKEN_RE.findall(text or "")]
 
 
 def load_corpus(data_dir: str | Path = "data") -> list[Document]:
@@ -189,7 +326,26 @@ def cross_encoder_rerank(query: str, results: list[SearchResult]) -> list[Search
     return sorted(reranked, key=lambda item: item.score, reverse=True)
 
 
-def hybrid_search(query: str, top_k: int = 4, data_dir: str | Path = "data") -> list[SearchResult]:
+# ══════════════════════════════════════════════════════════════════════════════
+#  Entry point
+# ══════════════════════════════════════════════════════════════════════════════
+
+def hybrid_search(query: str, top_k: int = 4, data_dir: str | Path = "data",
+                  jurisdiction: str | None = None) -> list[SearchResult]:
+    """Hybrid search over the ingested index; falls back to the local demo corpus.
+
+    jurisdiction: optional filter — "EU", "US", "UK" or None/"all".
+    """
+    retriever = _IndexRetriever.get()
+    if retriever is not None:
+        return retriever.search(query, top_k=top_k, jurisdiction=jurisdiction)
+
+    # FALLBACK mode (no index yet): pure-python pipeline, clearly labelled
     documents = load_corpus(data_dir)
+    if jurisdiction and jurisdiction.lower() != "all":
+        jur = jurisdiction.upper()
+        filtered = [d for d in documents if (d.jurisdiction or "EU") == jur]
+        documents = filtered or documents
     fused = rrf_fusion([bm25_rank(query, documents), dense_rank(query, documents)])
-    return cross_encoder_rerank(query, fused)[:top_k]
+    results = cross_encoder_rerank(query, fused)[:top_k]
+    return [SearchResult(r.document, r.score, r.method + " (fallback-demo)") for r in results]
