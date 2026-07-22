@@ -1,5 +1,5 @@
-{"name": "guardrails.l1", "duration_s": 0.002208, "status": "ok", "agent_version": "local-dev", "metadata": {}}
-{"name": "tool.hybrid_search", "duration_s": 0.013629, "status": "ok", "agent_version": "local-dev", "metadata": {}}
-{"name": "llm.synthesis.self_consistency_k3", "duration_s": 0.002553, "status": "ok", "agent_version": "local-dev", "metadata": {}}
-{"name": "agent.critic", "duration_s": 8.5e-05, "status": "ok", "agent_version": "local-dev", "metadata": {}}
-{"name": "agent", "duration_s": 0.018671, "status": "ok", "agent_version": "local-dev", "metadata": {}}
+{"name": "guardrails.l1", "duration_s": 0.001329, "status": "ok", "agent_version": "local-dev", "metadata": {}}
+{"name": "tool.hybrid_search", "duration_s": 0.012594, "status": "ok", "agent_version": "local-dev", "metadata": {}}
+{"name": "llm.synthesis.self_consistency_k3", "duration_s": 0.002085, "status": "ok", "agent_version": "local-dev", "metadata": {}}
+{"name": "agent.critic", "duration_s": 2.3e-05, "status": "ok", "agent_version": "local-dev", "metadata": {}}
+{"name": "agent", "duration_s": 0.016236, "status": "ok", "agent_version": "local-dev", "metadata": {}}

@@ -2,7 +2,7 @@
   "num_questions": 10,
   "cost_average_usd": 0.0,
   "cost_note": "Local deterministic fallback; no paid LLM call was made.",
-  "latency_average_s": 0.0107,
+  "latency_average_s": 0.0132,
   "baseline": {
     "context_recall": 0.4483,
     "context_precision": 0.8,
@@ -23,7 +23,7 @@
     {
       "id": "eu_art5_prohibited",
       "jurisdiction": "EU",
-      "latency_s": 0.0144,
+      "latency_s": 0.0124,
       "baseline_context_recall": 0.75,
       "baseline_context_precision": 1.0,
       "final_context_recall": 0.75,
@@ -37,7 +37,7 @@
     {
       "id": "eu_recruitment_high_risk",
       "jurisdiction": "EU",
-      "latency_s": 0.0092,
+      "latency_s": 0.01,
       "baseline_context_recall": 0.0,
       "baseline_context_precision": 0.0,
       "final_context_recall": 0.5,
@@ -51,7 +51,7 @@
     {
       "id": "eu_provider_obligations",
       "jurisdiction": "EU",
-      "latency_s": 0.0107,
+      "latency_s": 0.0103,
       "baseline_context_recall": 0.75,
       "baseline_context_precision": 1.0,
       "final_context_recall": 1.0,
@@ -65,7 +65,7 @@
     {
       "id": "eu_technical_documentation",
       "jurisdiction": "EU",
-      "latency_s": 0.0113,
+      "latency_s": 0.0116,
       "baseline_context_recall": 0.5,
       "baseline_context_precision": 1.0,
       "final_context_recall": 0.75,
@@ -79,7 +79,7 @@
     {
       "id": "eu_human_oversight",
       "jurisdiction": "EU",
-      "latency_s": 0.0103,
+      "latency_s": 0.0116,
       "baseline_context_recall": 0.3333,
       "baseline_context_precision": 1.0,
       "final_context_recall": 0.6667,
@@ -93,7 +93,7 @@
     {
       "id": "gdpr_dpia",
       "jurisdiction": "EU",
-      "latency_s": 0.0112,
+      "latency_s": 0.0133,
       "baseline_context_recall": 0.0,
       "baseline_context_precision": 0.0,
       "final_context_recall": 0.0,
@@ -107,7 +107,7 @@
     {
       "id": "us_nist_functions",
       "jurisdiction": "US",
-      "latency_s": 0.0105,
+      "latency_s": 0.0113,
       "baseline_context_recall": 1.0,
       "baseline_context_precision": 1.0,
       "final_context_recall": 1.0,
@@ -121,7 +121,7 @@
     {
       "id": "us_colorado_credit",
       "jurisdiction": "US",
-      "latency_s": 0.0111,
+      "latency_s": 0.0136,
       "baseline_context_recall": 0.5,
       "baseline_context_precision": 1.0,
       "final_context_recall": 0.5,
@@ -135,7 +135,7 @@
     {
       "id": "uk_principles",
       "jurisdiction": "UK",
-      "latency_s": 0.0095,
+      "latency_s": 0.0188,
       "baseline_context_recall": 0.4,
       "baseline_context_precision": 1.0,
       "final_context_recall": 1.0,
@@ -149,7 +149,7 @@
     {
       "id": "uk_vs_eu",
       "jurisdiction": "UK",
-      "latency_s": 0.0086,
+      "latency_s": 0.0195,
       "baseline_context_recall": 0.25,
       "baseline_context_precision": 1.0,
       "final_context_recall": 0.25,

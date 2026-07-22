@@ -35,7 +35,7 @@ L'evaluation locale est reproductible avec `python src/evaluate.py`. Elle utilis
 Mesures sur 10 executions :
 
 - Cout moyen : 0.0000 USD, car le mode local deterministe ne fait aucun appel LLM payant.
-- Latence moyenne : 0.0107 seconde.
+- Latence moyenne : 0.0132 seconde.
 - Repartition des appels d'outils : `tool.hybrid_search` appele 10 fois.
 - `TokenBudget` declenche : oui, test volontaire avec un budget de 3 tokens.
 
