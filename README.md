@@ -75,6 +75,29 @@ python src/agent.py "Une banque utilise un modèle IA pour présélectionner des
 python -m pytest tests/test_security.py
 ```
 
+## Evaluation et observabilite
+
+Evaluation locale sur 10 questions UE / US / UK :
+
+```bash
+python src/evaluate.py
+```
+
+Le script ecrit les resultats dans :
+
+```text
+evaluation/latest_results.json
+```
+
+Chaque execution de l'agent exporte aussi une trace locale compatible avec une structure Langfuse :
+
+```text
+observability/latest_trace.jsonl
+```
+
+La trace contient au minimum les spans `agent`, `guardrails.l1`, `tool.hybrid_search`,
+`llm.synthesis.self_consistency_k3` et `agent.critic`, avec `AGENT_VERSION` et duree.
+
 ## Architecture
 
 ```text

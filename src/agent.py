@@ -2,12 +2,10 @@
 
 from __future__ import annotations
 
-from contextlib import contextmanager
-import os
 import sys
-import time
 
 from guardrails import SecurityError, TokenBudget, authorize_action, l1_filter
+from observability import ObservabilityTracer
 from reasoning import format_answer, self_consistency
 from retrieval import hybrid_search
 
@@ -18,25 +16,12 @@ DEFAULT_QUESTION = (
 )
 
 
-class LocalTracer:
-    """Tiny span logger compatible with local execution and Langfuse-style naming."""
-
-    def __init__(self) -> None:
-        self.agent_version = os.getenv("AGENT_VERSION", "local-dev")
-
-    @contextmanager
-    def span(self, name: str):
-        start = time.perf_counter()
-        print(f"[span:start] {name} version={self.agent_version}")
-        try:
-            yield
-        finally:
-            duration = time.perf_counter() - start
-            print(f"[span:end] {name} duration_s={duration:.3f}")
-
-
-def run_agent(question: str) -> str:
-    tracer = LocalTracer()
+def run_agent(
+    question: str,
+    tracer: ObservabilityTracer | None = None,
+    verbose: bool = True,
+) -> str:
+    tracer = tracer or ObservabilityTracer(verbose=verbose)
     budget = TokenBudget(max_tokens=3500)
 
     with tracer.span("agent"):
@@ -63,7 +48,9 @@ def run_agent(question: str) -> str:
 def main() -> int:
     question = " ".join(sys.argv[1:]).strip() or DEFAULT_QUESTION
     try:
-        print(run_agent(question))
+        tracer = ObservabilityTracer(verbose=True)
+        print(run_agent(question, tracer=tracer))
+        tracer.export_jsonl("observability/latest_trace.jsonl")
         return 0
     except SecurityError as exc:
         print(f"REQUÊTE BLOQUÉE\n{exc}")
