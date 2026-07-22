@@ -28,6 +28,8 @@ from math import log, sqrt
 from pathlib import Path
 import re
 
+from constants import UNKNOWN_DATE
+
 TOKEN_RE = re.compile(r"[a-zA-ZÀ-ÿ0-9_]+")
 ROOT = Path(__file__).resolve().parents[1]
 INDEX_DIR = ROOT / "index_data"
@@ -49,6 +51,7 @@ class Document:
     context: str = ""          # parent legal block (INDEX mode)
     jurisdiction: str = ""     # EU / US / UK
     status: str = ""           # obligatoire / volontaire / recommandation / ...
+    date: str = UNKNOWN_DATE    # source date when available in the corpus metadata
 
 
 @dataclass(frozen=True)
@@ -195,6 +198,7 @@ class _IndexRetriever:
                     source=f"{c['jurisdiction']} · {c['corpus']} · statut: {c['status']}",
                     jurisdiction=c["jurisdiction"],
                     status=c["status"],
+                    date=c.get("date") or UNKNOWN_DATE,
                 ),
                 float(score),
                 method,

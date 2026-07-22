@@ -28,6 +28,7 @@ ACTION_RISK_MATRIX = {
     "hybrid_search": {"risk": "low", "requires_approval": False},
     "classify_ai_act_risk": {"risk": "low", "requires_approval": False},
     "security_screen": {"risk": "low", "requires_approval": False},
+    "compare_jurisdiction": {"risk": "low", "requires_approval": False},
     "read_local_corpus": {"risk": "low", "requires_approval": False},
     "external_request": {"risk": "medium", "requires_approval": True},
     "write_file": {"risk": "high", "requires_approval": True},
@@ -81,6 +82,26 @@ class TokenBudget:
                 f"Budget de tokens dépassé: {self.used_tokens + tokens}/{self.max_tokens}"
             )
         self.used_tokens += tokens
+
+    def can_consume(self, text: str) -> bool:
+        """Return whether a single text can still fit in the remaining budget."""
+        return self.used_tokens + self.estimate(text) <= self.max_tokens
+
+    def can_reserve(self, estimated_tokens: int = 0, *texts: str) -> bool:
+        """Return whether a planned group of future steps fits in the budget."""
+        total = max(0, int(estimated_tokens))
+        total += sum(self.estimate(text) for text in texts)
+        return self.used_tokens + total <= self.max_tokens
+
+    def reserve(self, estimated_tokens: int = 0, *texts: str) -> None:
+        """Consume an estimated budget for a planned group of steps."""
+        total = max(0, int(estimated_tokens))
+        total += sum(self.estimate(text) for text in texts)
+        if self.used_tokens + total > self.max_tokens:
+            raise SecurityError(
+                f"Budget de tokens dépassé: {self.used_tokens + total}/{self.max_tokens}"
+            )
+        self.used_tokens += total
 
     @property
     def remaining(self) -> int:
