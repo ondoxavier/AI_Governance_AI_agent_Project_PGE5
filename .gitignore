@@ -1,8 +1,50 @@
+# Python
 __pycache__/
 *.py[cod]
+*.egg-info/
+build/
+dist/
+
+# Tests and coverage
 .pytest_cache/
 pytest-cache-files-*/
 .tmp/
-.env
+.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+
+# Virtual environments
 .venv/
 venv/
+env/
+
+# Local secrets and config
+.env
+.env.*.local
+
+# IDE and editors
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Logs and debug dumps
+*.log
+error_dump.txt
+error_log.txt
+out.txt
+err.txt
+
+# Generated vector indexes
+index_data/
+*.faiss
+*.hnsw
+embeddings_cache/
+
+# Notebooks
+.ipynb_checkpoints/
