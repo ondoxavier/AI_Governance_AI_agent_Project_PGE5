@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections import Counter
 from dataclasses import dataclass, field
 from enum import Enum
+import hashlib
 import re
 import unicodedata
 from typing import Any
@@ -254,6 +255,18 @@ Reponds en DEUX lignes exactement :
 Ligne 1 : exactement le mot APPROVE ou le mot REVISE (rien d'autre).
 Ligne 2 : une phrase courte justifiant la decision.
 """
+
+
+def prompt_fingerprint() -> str:
+    """Short sha256 of the reasoning system prompts (synthesis + critic).
+
+    Lab B4 versioning rule: the agent version must change whenever the prompts
+    change, so behaviour drift is traceable. observability.py folds this into
+    AGENT_VERSION -- edit either prompt above and the logged version shifts
+    automatically, with no manual version bump.
+    """
+    material = (SYNTHESIS_SYSTEM_PROMPT + "\x00" + CRITIC_SYSTEM_PROMPT).encode("utf-8")
+    return hashlib.sha256(material).hexdigest()[:12]
 
 
 def _build_context_block(contexts: list[SearchResult]) -> str:
