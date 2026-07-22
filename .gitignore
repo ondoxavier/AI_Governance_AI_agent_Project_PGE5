@@ -8,6 +8,7 @@ dist/
 # Tests and coverage
 .pytest_cache/
 pytest-cache-files-*/
+pytest_tmp/
 .tmp/
 .coverage
 htmlcov/

@@ -517,9 +517,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         if question.casefold() in {"quit", "exit", "q"}:
             print("Arret demande.")
             return 0
-        response = run_agent(question)
+        tracer = create_tracer("agent.cli", {"entrypoint": "cli"})
+        response = run_agent(question, tracer=tracer)
         print(response.answer)
         print(f"\nMETADATA trace_id={response.trace_id} latency_ms={response.latency_ms:.1f}")
+        tracer.export_jsonl("observability/latest_trace.jsonl")
         return 0
     except KeyboardInterrupt:
         print("Arret demande.")
