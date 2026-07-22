@@ -75,6 +75,30 @@ python src/agent.py "Une banque utilise un modèle IA pour présélectionner des
 python -m pytest tests/test_security.py
 ```
 
+## Evaluation et observabilite
+
+Evaluation locale sur 10 questions UE / US / UK :
+
+```bash
+python src/evaluate.py
+```
+
+Le script ecrit les resultats dans :
+
+```text
+evaluation/latest_results.json
+```
+
+Chaque execution de l'agent exporte aussi une trace locale compatible avec une structure Langfuse :
+
+```text
+observability/latest_trace.jsonl
+```
+
+La trace contient au minimum les spans `agent.run`, `guardrail.l1`,
+`guardrail.l4`, `retrieval.search`, `reasoning.self_consistency`,
+`reasoning.synthesis.*` et `critic.review`, avec `AGENT_VERSION` et duree.
+
 ## Architecture
 
 ```text
@@ -95,11 +119,58 @@ tests/             : tests d'injection
 
 Le projet fonctionne hors ligne avec un petit corpus local. En production, les mêmes interfaces peuvent être branchées sur un LLM, Langfuse et un serveur MCP complet via les variables d'environnement.
 
-## Outils MCP prévus
+## MCP Server
 
-- `hybrid_search` : recherche documentaire hybride dans le corpus.
-- `classify_ai_act_risk` : classification du niveau de risque AI Act.
-- `security_screen` : analyse d'une entrée utilisateur par les garde-fous.
+Le serveur MCP expose les outils du projet a un client compatible MCP tout en
+gardant les fonctions importables directement par les tests Python.
+
+Lancer le serveur :
+
+```bash
+python src/mcp_server.py
+```
+
+Ouvrir l'Inspector lorsque le SDK et `uv` sont disponibles :
+
+```bash
+uv run mcp dev src/mcp_server.py
+```
+
+Verifier les commandes disponibles selon l'environnement :
+
+```bash
+mcp --help
+uv run mcp --help
+```
+
+Outils disponibles :
+
+| Outil | Objectif | Sortie |
+|---|---|---|
+| `hybrid_search` | Recherche hybride dans le corpus avec filtre optionnel `EU`, `US`, `UK` ou `all`. | Passages avec `title`, `text`, `source`, `jurisdiction`, `status`, `score`. |
+| `classify_ai_act_risk` | Premiere qualification AI Act fondee sur les passages EU recuperes. | Niveau de risque probable, sources et disclaimer. |
+| `security_screen` | Passage L1 sur une entree avant execution d'outil ou raisonnement. | `ok`, texte normalise ou erreur controlee. |
+| `compare_jurisdiction` | Compare un meme sujet via trois recherches separees `EU`, `US`, `UK`. | Blocs separes par juridiction, resume des statuts, warnings partiels. |
+
+Exemple local sans client MCP :
+
+```bash
+python -c "import sys; sys.path.insert(0, 'src'); from mcp_server import compare_jurisdiction; print(compare_jurisdiction('AI credit decisions'))"
+```
+
+Mode offline : si `index_data/` n'existe pas ou si une dependance ML manque, le
+retrieval bascule sur le corpus de demonstration integre. Les outils retournent
+des erreurs structurees au lieu d'une stack trace brute.
+
+Disclaimer affiche par les outils d'analyse :
+
+```text
+Cette analyse est generee par IA et doit etre validee par un juriste avant toute decision.
+```
+
+Observabilite : si `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY` et
+eventuellement `LANGFUSE_HOST` sont definis, les spans sont envoyes a Langfuse.
+Sinon, le fallback local imprime les spans `[span:start]` / `[span:end]`.
 
 ## Variables d'environnement
 

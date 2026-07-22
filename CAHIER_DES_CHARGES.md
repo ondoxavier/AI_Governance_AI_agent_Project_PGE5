@@ -6,6 +6,17 @@
 
 ---
 
+## État au 22/07/2026 (soir) — pour reprendre une session
+
+- **Branche de travail : `feature/retrieval`** (pas encore fusionnée sur `main` — attente du go de l'utilisateur). Dernier commit : `ee4e2e1`.
+- **Fait** : retrieval hybride réel (2968 chunks, 3 juridictions, dates sourcées), guardrails, MCP 4 tools, LLM DeepInfra branché dans `reasoning.py` (2 modèles : synthèse Llama-3.1-8B + critique Llama-3.3-70B), `evaluate.py` corrigé (coût réel tracké, asymétrie boilerplate retirée).
+- **Prochaine étape immédiate** : relancer `python src/evaluate.py` (~30-40 min avec le LLM réel branché) pour régénérer `evaluation/latest_results.json` avec des chiffres propres avant de les citer dans `REPORT.md`.
+- **Branche `hakim` (origin/hakim) dangereuse** : a divergé d'un point très ancien, un merge naïf effacerait tout le travail récent. À rebaser avant fusion.
+- **`.env` contient une vraie clé DeepInfra** (jamais commitée, `.gitignore` la couvre) — ne pas la redemander à l'utilisateur, elle est déjà configurée dans `tp_1/AI_Governance_AI_agent_Project_PGE5/.env`.
+- Dette restante : RAGAS reste un proxy local (pas de juge LLM cloud), Langfuse configuré côté code mais sans clés réelles.
+
+---
+
 ## 0. Règle d'or du sprint
 
 Avec le temps restant, **on n'optimise pas la qualité, on optimise les points du rubric**. Priorité absolue n°1 : que le repo passe la porte pass/fail (`pip install` + `python src/agent.py` + `pytest tests/test_security.py` depuis un clone vierge — sinon plafond à 10/50 sur l'implémentation technique). Tout le reste vient après, dans l'ordre de la section 9.

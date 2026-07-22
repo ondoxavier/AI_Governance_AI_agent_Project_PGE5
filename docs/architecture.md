@@ -1,40 +1,121 @@
 # Architecture du projet
 
 ```text
+User / CLI / MCP client
+  |
+  v
 src/agent.py
   |
-  |-- Guardrails L1
-  |     Normalisation Unicode
-  |     Détection injection
-  |     TokenBudget
+  |-- Observability
+  |     Langfuse si configure
+  |     fallback local sinon
   |
-  |-- Retrieval
-  |     Chargement data/*.md et data/*.txt
-  |     Découpage parent-enfant
-  |     BM25
-  |     Embedding local par hachage
-  |     Fusion RRF
-  |     Reranking lexical
+  |-- Guardrail L1
+  |     validation type/longueur
+  |     normalisation Unicode via guardrails.py
+  |     detection prompt injection
+  |
+  |-- Guardrail L4
+  |     autorisation explicite des actions outillees
+  |     refus des actions inconnues ou sensibles
+  |
+  |-- Retrieval / MCP Tool
+  |     hybrid_search(query, top_k, data_dir, jurisdiction, mode)
+  |     baseline dense-only
+  |     BM25 + dense + RRF + reranking
+  |     fallback corpus local si index_data/ absent
   |
   |-- Reasoning
-  |     Prompt PREUVES / ANALYSE / CONCLUSION / CONFIANCE
-  |     Self-consistency k = 3
-  |     Agent critique
+  |     self_consistency(question, contexts, k=3)
+  |     format PREUVES / ANALYSE / CONCLUSION / CONFIANCE
   |
-  |-- MCP Server
-        hybrid_search
-        classify_ai_act_risk
-        security_screen
+  |-- Critic
+  |     critic_review(...)
+  |     verdict visible APPROVE / REVISE
+  |     une revision maximum si budget disponible
+  |
+  v
+AgentResponse
+  answer
+  conclusion
+  confidence
+  critic_verdict
+  sources
+  warnings
+  trace_id
+  latency_ms
+
+src/evaluate.py
+  |
+  |-- 10 questions UE / US / UK
+  |-- baseline dense top-1
+  |-- final BM25 + dense + RRF + rerank
+  |-- latence, cout local, appels outils, TokenBudget
+  |-- export evaluation/latest_results.json
 ```
+
+## Serveur MCP
+
+`src/mcp_server.py` expose quatre outils. Les fonctions restent importables sans
+serveur distant afin que les tests automatises ne dependent pas du reseau.
+
+```text
+MCP client
+  |
+  v
+FastMCP("ai-governance-agent")
+  |
+  |-- hybrid_search
+  |     recherche hybride avec filtre optionnel EU / US / UK / all
+  |
+  |-- classify_ai_act_risk
+  |     recupere des sources EU puis appelle reasoning.classify_ai_act_risk
+  |
+  |-- security_screen
+  |     applique L1 avant execution d'outils ou raisonnement
+  |
+  |-- compare_jurisdiction
+        appelle hybrid_search trois fois :
+        1. jurisdiction="EU"
+        2. jurisdiction="US"
+        3. jurisdiction="UK"
+        conserve source, jurisdiction et status dans chaque bloc
+```
+
+Le choix de ne pas paralleliser `compare_jurisdiction` est volontaire : le
+retrieval peut charger des modeles ou caches partages (`sentence-transformers`,
+cross-encoder). Les trois appels sequentiels gardent un ordre deterministe.
 
 ## Composants
 
-`agent.py` orchestre l'exécution : contrôle de l'entrée, récupération documentaire, synthèse, critique et affichage.
+`agent.py` orchestre l'execution : validation de l'entree, L1, L4, recherche
+documentaire, self-consistency, critique, budget de tokens, rendu final et
+observabilite. Il retourne une `AgentResponse` testable et la CLI imprime une
+version lisible pour le professeur.
 
-`retrieval.py` implémente la recherche hybride demandée. Le BM25 privilégie la correspondance lexicale, l'embedding local fournit un signal dense déterministe et RRF fusionne les classements. Le reranking final réordonne les documents avant la synthèse.
+`observability.py` fournit un tracer commun. Si les variables Langfuse sont
+presentes et que le package est installe, les spans sont envoyes a Langfuse.
+Sinon, les memes noms de spans sont imprimes localement et conserves en memoire.
+L'absence de Langfuse ne casse jamais l'import ou l'execution.
 
-`guardrails.py` contient le filtre L1 et le contrôle L4. L1 bloque les injections évidentes avant action. L4 autorise ou refuse chaque outil selon une matrice de risque.
+`retrieval.py` implemente la recherche hybride demandee. En mode production,
+l'index genere par `src/ingest.py` fournit les chunks parent-enfant avec
+metadata juridique. En mode fallback, les fichiers Markdown de `data/` et des
+README de corpus permettent de lancer l'agent depuis un clone vierge.
 
-`reasoning.py` produit une réponse structurée et applique une self-consistency à trois variantes déterministes.
+`guardrails.py` contient le filtre L1, la matrice L4 et `TokenBudget`. Les tests
+de securite verifient les prompt injections, les actions inconnues/sensibles et
+les depassements de budget.
 
-`mcp_server.py` expose les outils attendus. Si la librairie MCP est installée, le serveur peut être lancé ; sinon les fonctions restent importables et testables localement.
+`reasoning.py` produit la synthese structuree et l'agent critique deterministe.
+
+`evaluate.py` produit les mesures utilisees dans le rapport. Le mode baseline
+correspond a une recherche dense top-1 sans RRF ni reranking. La version finale
+utilise le pipeline hybride et mesure aussi la latence, les appels d'outils et
+le declenchement du `TokenBudget`.
+
+Chaque reponse d'analyse reglementaire contient le disclaimer :
+
+```text
+Cette analyse est generee par IA et doit etre validee par un juriste avant toute decision.
+```

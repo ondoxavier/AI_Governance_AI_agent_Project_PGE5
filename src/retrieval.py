@@ -21,19 +21,38 @@ Public API (stable — used by agent.py, mcp_server.py, reasoning.py, tests):
 from __future__ import annotations
 
 import json
+import os
 from dataclasses import dataclass, field
 from hashlib import blake2b
 from math import log, sqrt
 from pathlib import Path
 import re
 
+from constants import UNKNOWN_DATE
+
 TOKEN_RE = re.compile(r"[a-zA-ZÀ-ÿ0-9_]+")
 ROOT = Path(__file__).resolve().parents[1]
 INDEX_DIR = ROOT / "index_data"
 
-EMBED_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
-RERANK_MODEL = "cross-encoder/ms-marco-MiniLM-L-6-v2"
+# Overridable via env for experiments (e.g. a multilingual embedder). The
+# embedder MUST match the one used at ingestion time (src/ingest.py).
+EMBED_MODEL = os.getenv("EMBED_MODEL", "sentence-transformers/all-MiniLM-L6-v2")
+RERANK_MODEL = os.getenv("RERANK_MODEL", "cross-encoder/ms-marco-MiniLM-L-6-v2")
 INITIAL_TOP_K = 24   # candidates fetched per ranking before fusion/rerank
+
+FALLBACK_JURISDICTION_BY_DIR = {
+    "ai_act_corpus": "EU",
+    "gdpr_corpus": "EU",
+    "us_ai_regulation_corpus": "US",
+    "uk_ai_regulation_corpus": "UK",
+}
+
+FALLBACK_STATUS_BY_DIR = {
+    "ai_act_corpus": "obligatoire",
+    "gdpr_corpus": "obligatoire",
+    "us_ai_regulation_corpus": "variable",
+    "uk_ai_regulation_corpus": "recommandation",
+}
 
 
 @dataclass(frozen=True)
@@ -46,6 +65,7 @@ class Document:
     context: str = ""          # parent legal block (INDEX mode)
     jurisdiction: str = ""     # EU / US / UK
     status: str = ""           # obligatoire / volontaire / recommandation / ...
+    date: str = UNKNOWN_DATE    # source date when available in the corpus metadata
 
 
 @dataclass(frozen=True)
@@ -111,20 +131,27 @@ class _IndexRetriever:
         jur = jurisdiction.upper()
         return [i for i, c in enumerate(self.chunks) if c["jurisdiction"] == jur]
 
-    def search(self, query: str, top_k: int, jurisdiction: str | None) -> list[SearchResult]:
+    def search(self, query: str, top_k: int, jurisdiction: str | None,
+               mode: str = "full") -> list[SearchResult]:
         np = self.np
         ids = self._candidate_ids(jurisdiction)
         if not ids:
             return []
 
-        # BM25 ranking (restricted to candidates)
-        bm25_all = self.bm25.get_scores(tokenize(query))
-        bm25_rank = sorted(ids, key=lambda i: bm25_all[i], reverse=True)[:INITIAL_TOP_K]
-
         # Dense ranking: cosine = dot product (embeddings are L2-normalised)
         q = self.embedder.encode([query], convert_to_numpy=True, normalize_embeddings=True)[0]
         sims = self.embeddings @ q
         dense_rank = sorted(ids, key=lambda i: float(sims[i]), reverse=True)[:INITIAL_TOP_K]
+
+        if mode == "baseline":
+            # Naive top-k cosine — the RAGAS/eval "before" reference.
+            # No BM25, no RRF, no reranking.
+            order = [(i, float(sims[i])) for i in dense_rank]
+            return self._to_results(order[:top_k], method="dense-only (baseline)")
+
+        # BM25 ranking (restricted to candidates)
+        bm25_all = self.bm25.get_scores(tokenize(query))
+        bm25_rank = sorted(ids, key=lambda i: bm25_all[i], reverse=True)[:INITIAL_TOP_K]
 
         # RRF fusion (k=60)
         rrf: dict[int, float] = {}
@@ -133,18 +160,37 @@ class _IndexRetriever:
                 rrf[idx] = rrf.get(idx, 0.0) + 1.0 / (60 + rank)
         fused = sorted(rrf, key=rrf.get, reverse=True)[:INITIAL_TOP_K]
 
-        # Cross-encoder reranking of the fused pool
+        # Cross-encoder reranking of the fused pool.
+        # Two adjustments measured on tests/eval_retrieval.py (raw CE degraded MRR):
+        #  - the passage shown to the CE is prefixed with its document/article
+        #    title, otherwise legal chunks lose to guide prose;
+        #  - the CE score is blended with the RRF rank prior instead of
+        #    replacing it, so the CE refines the fused order rather than
+        #    overriding it.
         method = "bm25+dense+rrf"
         if self.reranker is not None:
-            pairs = [(query, self.chunks[i]["text"]) for i in fused]
-            ce_scores = self.reranker.predict(pairs)
-            order = sorted(zip(fused, ce_scores), key=lambda t: float(t[1]), reverse=True)
+            def passage(i: int) -> str:
+                c = self.chunks[i]
+                head = " — ".join(x for x in (c["doc_id"], c["article"] or c["chapter"]) if x)
+                return f"{head}: {c['text']}"
+
+            ce_scores = self.reranker.predict([(query, passage(i)) for i in fused])
+            lo, hi = float(min(ce_scores)), float(max(ce_scores))
+            span = (hi - lo) or 1.0
+            rrf_prior = {idx: 1.0 - rank / len(fused) for rank, idx in enumerate(fused)}
+            blended = {
+                idx: 0.6 * ((float(s) - lo) / span) + 0.4 * rrf_prior[idx]
+                for idx, s in zip(fused, ce_scores)
+            }
+            order = sorted(blended.items(), key=lambda t: t[1], reverse=True)
             method += "+cross-encoder"
         else:
             order = [(i, rrf[i]) for i in fused]
+        return self._to_results(order[:top_k], method=method)
 
+    def _to_results(self, order: list[tuple[int, float]], method: str) -> list[SearchResult]:
         results = []
-        for idx, score in order[:top_k]:
+        for idx, score in order:
             c = self.chunks[idx]
             title_bits = [c["doc_id"]]
             if c["article"]:
@@ -161,6 +207,7 @@ class _IndexRetriever:
                     source=f"{c['jurisdiction']} · {c['corpus']} · statut: {c['status']}",
                     jurisdiction=c["jurisdiction"],
                     status=c["status"],
+                    date=c.get("date") or UNKNOWN_DATE,
                 ),
                 float(score),
                 method,
@@ -213,7 +260,7 @@ def load_corpus(data_dir: str | Path = "data") -> list[Document]:
         for path in sorted(root.rglob("*")):
             if path.suffix.casefold() not in {".md", ".txt"}:
                 continue
-            if path.name.casefold() == "readme.md":
+            if path.name.casefold() == "readme.md" and path.parent == root:
                 continue
             text = path.read_text(encoding="utf-8")
             documents.extend(split_parent_child(path, text))
@@ -229,6 +276,9 @@ def split_parent_child(path: Path, text: str, chunk_words: int = 120) -> list[Do
         "",
     )
     title = heading or path.stem
+    corpus_name = path.parent.name
+    jurisdiction = FALLBACK_JURISDICTION_BY_DIR.get(corpus_name, "EU")
+    status = FALLBACK_STATUS_BY_DIR.get(corpus_name, "resume non officiel")
     chunks: list[Document] = []
     for index in range(0, len(words), chunk_words):
         chunk = " ".join(words[index : index + chunk_words])
@@ -240,6 +290,8 @@ def split_parent_child(path: Path, text: str, chunk_words: int = 120) -> list[Do
                     title=title,
                     text=chunk,
                     source=str(path),
+                    jurisdiction=jurisdiction,
+                    status=status,
                 )
             )
     return chunks
@@ -330,15 +382,31 @@ def cross_encoder_rerank(query: str, results: list[SearchResult]) -> list[Search
 #  Entry point
 # ══════════════════════════════════════════════════════════════════════════════
 
+def baseline_search(query: str, top_k: int = 4, data_dir: str | Path = "data",
+                    jurisdiction: str | None = None) -> list[SearchResult]:
+    """Dense-only retrieval baseline used by the evaluation script."""
+    documents = load_corpus(data_dir)
+    if jurisdiction and jurisdiction.lower() != "all":
+        jur = jurisdiction.upper()
+        filtered = [d for d in documents if (d.jurisdiction or "EU") == jur]
+        documents = filtered or documents
+    return [
+        SearchResult(result.document, result.score, result.method + " (baseline)")
+        for result in dense_rank(query, documents)[:top_k]
+    ]
+
+
 def hybrid_search(query: str, top_k: int = 4, data_dir: str | Path = "data",
-                  jurisdiction: str | None = None) -> list[SearchResult]:
+                  jurisdiction: str | None = None, mode: str = "full") -> list[SearchResult]:
     """Hybrid search over the ingested index; falls back to the local demo corpus.
 
     jurisdiction: optional filter — "EU", "US", "UK" or None/"all".
+    mode: "full"     — BM25 + dense + RRF + cross-encoder (default; the report's "Final")
+          "baseline" — naive top-k cosine only (the report's "Baseline")
     """
     retriever = _IndexRetriever.get()
     if retriever is not None:
-        return retriever.search(query, top_k=top_k, jurisdiction=jurisdiction)
+        return retriever.search(query, top_k=top_k, jurisdiction=jurisdiction, mode=mode)
 
     # FALLBACK mode (no index yet): pure-python pipeline, clearly labelled
     documents = load_corpus(data_dir)
@@ -346,6 +414,10 @@ def hybrid_search(query: str, top_k: int = 4, data_dir: str | Path = "data",
         jur = jurisdiction.upper()
         filtered = [d for d in documents if (d.jurisdiction or "EU") == jur]
         documents = filtered or documents
+    if mode == "baseline":
+        results = dense_rank(query, documents)[:top_k]
+        return [SearchResult(r.document, r.score, "dense-only (baseline, fallback-demo)")
+                for r in results]
     fused = rrf_fusion([bm25_rank(query, documents), dense_rank(query, documents)])
     results = cross_encoder_rerank(query, fused)[:top_k]
     return [SearchResult(r.document, r.score, r.method + " (fallback-demo)") for r in results]
