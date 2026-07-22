@@ -10,8 +10,16 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Callable
 
-from src.config import settings
-from src.models import FilterResult, GateDecision
+try:
+    from src.config import settings
+    from src.models import FilterResult, GateDecision
+except ModuleNotFoundError:
+    from config import settings
+    from models import FilterResult, GateDecision
+
+
+class SecurityError(Exception):
+    """Expected security refusal raised by guardrails."""
 
 
 # Configuration du système de logs.
@@ -168,6 +176,16 @@ FORBIDDEN_PATTERNS = [
         r"(secret|password|token|api\s+key)",
         "secret_exfiltration",
     ),
+
+    (
+        r"\b[a-z0-9_]*api[_-]?key\b|\bopenai_api_key\b",
+        "api_key_identifier_access",
+    ),
+
+    (
+        r"\brm\s+-rf\b|\bdelete\s+all\s+project\s+data\b",
+        "destructive_filesystem_request",
+    ),
 ]
 
 
@@ -218,7 +236,7 @@ def normalize_text(text: str) -> str:
     return normalized.strip()
 
 
-def l1_filter(
+def _l1_filter_verdict(
     text: str,
     strict: bool = True,
 ) -> tuple[Verdict, str]:
@@ -294,6 +312,18 @@ def l1_filter(
     return Verdict.CLEAN, normalized
 
 
+def l1_filter(
+    text: str,
+    strict: bool = True,
+) -> str:
+    """Return normalized text or raise SecurityError for blocked input."""
+
+    verdict, result = _l1_filter_verdict(text, strict=strict)
+    if verdict != Verdict.CLEAN:
+        raise SecurityError(result)
+    return result
+
+
 class L1InputFilter:
     """
     Classe utilisée par l'agent principal RegulaAI.
@@ -348,7 +378,7 @@ class L1InputFilter:
                 decoded = base64.b64decode(token, validate=True).decode("utf-8")
             except (ValueError, UnicodeDecodeError):
                 continue
-            decoded_verdict, _ = l1_filter(decoded, strict=self.strict)
+            decoded_verdict, _ = _l1_filter_verdict(decoded, strict=self.strict)
             if decoded_verdict != Verdict.CLEAN:
                 return FilterResult(
                     allowed=False,
@@ -358,7 +388,7 @@ class L1InputFilter:
                     risk_score=1.0,
                 )
 
-        verdict, result = l1_filter(
+        verdict, result = _l1_filter_verdict(
             user_input,
             strict=self.strict,
         )
@@ -879,6 +909,21 @@ def l4_gate(
     )
 
 
+def authorize_action(
+    action_name: str,
+    *,
+    approved: bool = False,
+) -> bool:
+    """Compatibility wrapper used by the CLI, MCP server and tests."""
+
+    policy = ACTION_RISK_MATRIX.get(action_name)
+    if policy is None:
+        raise SecurityError(f"Action non autorisee: {action_name}")
+    if policy.get("requires_approval") and not approved:
+        raise SecurityError(f"Action {action_name} requiert une approbation humaine.")
+    return True
+
+
 class L4ActionGate:
     """
     Classe compatible avec l'agent principal RegulaAI.
@@ -974,13 +1019,33 @@ class TokenBudget:
     - un dépassement important des tokens.
     """
 
+    max_tokens: int | None = None
     max_llm_calls: int = settings.max_llm_calls
     max_tool_calls: int = settings.max_tool_calls
-    max_estimated_tokens: int = settings.max_estimated_tokens
+    max_estimated_tokens: int | None = None
 
     llm_calls: int = 0
     tool_calls: int = 0
     estimated_tokens: int = 0
+    used_tokens: int = 0
+
+    def __post_init__(self) -> None:
+        if self.max_estimated_tokens is None:
+            self.max_estimated_tokens = settings.max_estimated_tokens
+        if self.max_tokens is None:
+            self.max_tokens = self.max_estimated_tokens
+
+    def estimate(self, text: str) -> int:
+        """Estimate token consumption for local deterministic budgeting."""
+
+        return max(1, len(str(text)) // 4)
+
+    def consume(self, text: str) -> int:
+        """Compatibility API for consuming budget from a text payload."""
+
+        estimated_tokens = self.estimate(text)
+        self.reserve(estimated_tokens)
+        return estimated_tokens
 
     def consume_llm_call(
         self,
