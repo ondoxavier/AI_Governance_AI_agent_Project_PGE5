@@ -27,6 +27,19 @@ DEFAULT_BASE_URL = "https://api.deepinfra.com/v1/openai"
 DEFAULT_SYNTHESIS_MODEL = "meta-llama/Meta-Llama-3.1-8B-Instruct"
 DEFAULT_CRITIC_MODEL = "meta-llama/Llama-3.3-70B-Instruct"
 
+# Indicative DeepInfra pricing, USD per million tokens (input, output).
+# Source: third-party trackers (pricepertoken.com, aipricing.guru), July 2026 --
+# verify against https://deepinfra.com/pricing before quoting exact figures.
+PRICING_USD_PER_M_TOKENS = {
+    "meta-llama/Meta-Llama-3.1-8B-Instruct": (0.05, 0.08),
+    "meta-llama/Llama-3.3-70B-Instruct": (0.23, 0.40),
+}
+
+# Cumulative token usage across every chat() call in this process, keyed by
+# model. Reset per evaluation run via reset_usage() so cost figures reflect
+# one run, not the whole process lifetime.
+_usage_by_model: dict[str, dict[str, int]] = {}
+
 
 @lru_cache(maxsize=1)
 def get_client() -> Any | None:
@@ -84,9 +97,45 @@ def chat(
             temperature=temperature,
             max_tokens=max_tokens,
         )
+        usage = getattr(response, "usage", None)
+        if usage is not None:
+            entry = _usage_by_model.setdefault(model, {"prompt_tokens": 0, "completion_tokens": 0})
+            entry["prompt_tokens"] += getattr(usage, "prompt_tokens", 0) or 0
+            entry["completion_tokens"] += getattr(usage, "completion_tokens", 0) or 0
         return response.choices[0].message.content
     except Exception:
         return None
+
+
+def reset_usage() -> None:
+    """Clear accumulated token usage — call before measuring a single run's cost."""
+    _usage_by_model.clear()
+
+
+def get_usage_totals() -> dict[str, dict[str, int]]:
+    """Return {model: {prompt_tokens, completion_tokens}} accumulated since the
+    last reset_usage() call."""
+    return {model: dict(counts) for model, counts in _usage_by_model.items()}
+
+
+def estimate_cost_usd() -> tuple[float, list[str]]:
+    """Estimate USD cost from accumulated usage and the indicative pricing table.
+
+    Returns (total_cost, notes) where notes lists any model missing from the
+    pricing table (cost for that model is then excluded, not guessed at).
+    """
+    total = 0.0
+    notes: list[str] = []
+    for model, counts in _usage_by_model.items():
+        pricing = PRICING_USD_PER_M_TOKENS.get(model)
+        if pricing is None:
+            notes.append(f"Tarif inconnu pour {model}: cout exclu de l'estimation.")
+            continue
+        price_in, price_out = pricing
+        total += (
+            counts["prompt_tokens"] * price_in + counts["completion_tokens"] * price_out
+        ) / 1_000_000
+    return round(total, 6), notes
 
 
 def reset_cache() -> None:

@@ -13,6 +13,7 @@ import json
 import time
 import unicodedata
 
+import llm_client
 from agent import run_agent
 from guardrails import SecurityError, TokenBudget
 from observability import create_tracer
@@ -107,6 +108,22 @@ EVAL_CASES = [
 ]
 
 
+def _strip_boilerplate(text: str) -> str:
+    """Cut the fixed AVERTISSEMENTS/DISCLAIMER trailer added by agent.py.
+
+    Without this, `final` (which always carries this trailer) and
+    `baseline_answer` (which never does, since it comes straight out of
+    format_answer()) are not scored on comparable content: the generic
+    disclaimer sentence cannot match the retrieved legal text, so it
+    mechanically drags faithfulness down regardless of answer quality.
+    """
+    for header in ("\n\nAVERTISSEMENTS\n", "\n\nDISCLAIMER\n"):
+        index = text.find(header)
+        if index != -1:
+            text = text[:index]
+    return text
+
+
 def _plain(text: str) -> str:
     normalized = unicodedata.normalize("NFKD", text or "")
     return "".join(ch for ch in normalized if not unicodedata.combining(ch)).casefold()
@@ -156,6 +173,7 @@ def evaluate() -> dict:
     total_tool_calls: dict[str, int] = {}
     total_latency = 0.0
     token_budget_triggered = False
+    llm_client.reset_usage()  # isolate this run's cost from any prior calls in-process
 
     for case in EVAL_CASES:
         baseline = hybrid_search(
@@ -170,7 +188,10 @@ def evaluate() -> dict:
         tracer = create_tracer("evaluation.run", {"case_id": case.id})
         start = time.perf_counter()
         response = run_agent(case.question, jurisdiction=case.jurisdiction or "all", tracer=tracer)
-        answer = response.answer
+        # Scored on the same content shape as baseline_answer (no disclaimer
+        # trailer) so the comparison isolates reasoning quality, not the
+        # presence of a fixed compliance sentence. See _strip_boilerplate().
+        answer = _strip_boilerplate(response.answer)
         latency = time.perf_counter() - start
         total_latency += latency
 
@@ -203,10 +224,25 @@ def evaluate() -> dict:
     except SecurityError:
         token_budget_triggered = True
 
+    llm_used = llm_client.is_available()
+    total_cost_usd, cost_notes = llm_client.estimate_cost_usd() if llm_used else (0.0, [])
+    usage_totals = llm_client.get_usage_totals() if llm_used else {}
+    if llm_used:
+        cost_note = (
+            "Cout estime a partir de l'usage reel DeepInfra (tarifs indicatifs "
+            "juillet 2026, a verifier sur deepinfra.com/pricing). "
+            + (" ".join(cost_notes) if cost_notes else "")
+        ).strip()
+    else:
+        cost_note = "Aucune cle DEEPINFRA_API_KEY configuree: fallback deterministe, aucun appel LLM paye."
+
     summary = {
         "num_questions": len(EVAL_CASES),
-        "cost_average_usd": 0.0,
-        "cost_note": "Local deterministic fallback; no paid LLM call was made.",
+        "llm_used": llm_used,
+        "cost_average_usd": round(total_cost_usd / len(EVAL_CASES), 6),
+        "cost_total_usd": total_cost_usd,
+        "cost_note": cost_note,
+        "token_usage_by_model": usage_totals,
         "latency_average_s": round(total_latency / len(EVAL_CASES), 4),
         "baseline": {
             "context_recall": round(average(rows, "baseline_context_recall"), 4),
