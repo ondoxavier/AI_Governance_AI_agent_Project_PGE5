@@ -7,9 +7,13 @@ from dataclasses import dataclass
 from enum import Enum
 import html
 import json
+import logging
 import re
 from typing import Any
 import unicodedata
+
+
+logger = logging.getLogger(__name__)
 
 
 class SecurityError(ValueError):
@@ -101,16 +105,31 @@ INVISIBLE_CHARACTERS = re.compile(
 )
 
 
+class ActionRisk(str, Enum):
+    """Risk tier assigned to an MCP tool/action, ported from Hakim's design.
+
+    SAFE: allowed silently (read-only, local, no side effect).
+    MONITOR: allowed, but logged (e.g. it could carry indirect injection).
+    CONFIRM: allowed only when `approved=True` is passed explicitly.
+    BLOCK: never allowed, regardless of `approved` (irreversible actions).
+    """
+
+    SAFE = "safe"
+    MONITOR = "monitor"
+    CONFIRM = "confirm"
+    BLOCK = "block"
+
+
 ACTION_RISK_MATRIX = {
-    "hybrid_search": {"risk": "low", "requires_approval": False},
-    "classify_ai_act_risk": {"risk": "low", "requires_approval": False},
-    "security_screen": {"risk": "low", "requires_approval": False},
-    "compare_jurisdiction": {"risk": "low", "requires_approval": False},
-    "read_local_corpus": {"risk": "low", "requires_approval": False},
-    "external_request": {"risk": "medium", "requires_approval": True},
-    "write_file": {"risk": "high", "requires_approval": True},
-    "send_email": {"risk": "high", "requires_approval": True},
-    "delete_data": {"risk": "critical", "requires_approval": True},
+    "hybrid_search": ActionRisk.SAFE,
+    "classify_ai_act_risk": ActionRisk.SAFE,
+    "security_screen": ActionRisk.SAFE,
+    "compare_jurisdiction": ActionRisk.SAFE,
+    "read_local_corpus": ActionRisk.SAFE,
+    "external_request": ActionRisk.MONITOR,
+    "write_file": ActionRisk.CONFIRM,
+    "send_email": ActionRisk.CONFIRM,
+    "delete_data": ActionRisk.BLOCK,
 }
 
 
@@ -236,12 +255,21 @@ sanitize_tool_result = sanitise_tool_result
 
 
 def authorize_action(action_name: str, approved: bool = False) -> bool:
-    """Authorize an action with the L4 risk matrix."""
-    action = ACTION_RISK_MATRIX.get(action_name)
-    if action is None:
+    """Authorize an action against the L4 risk matrix (SAFE/MONITOR/CONFIRM/BLOCK).
+
+    Raises:
+        SecurityError: unknown action, BLOCK tier (no override possible), or
+        CONFIRM tier without `approved=True`.
+    """
+    risk = ACTION_RISK_MATRIX.get(action_name)
+    if risk is None:
         raise SecurityError(f"Action inconnue refusée par L4: {action_name}")
-    if action["requires_approval"] and not approved:
+    if risk == ActionRisk.BLOCK:
+        raise SecurityError(f"Action {action_name} est bloquée (risque critique, aucune approbation possible)")
+    if risk == ActionRisk.CONFIRM and not approved:
         raise SecurityError(f"Action {action_name} requiert une approbation humaine")
+    if risk == ActionRisk.MONITOR:
+        logger.warning("Action L4 surveillee: %s", action_name)
     return True
 
 

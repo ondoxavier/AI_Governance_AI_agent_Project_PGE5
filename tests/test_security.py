@@ -59,6 +59,21 @@ def test_l4_requires_approval_for_high_risk_action():
     assert authorize_action("write_file", approved=True)
 
 
+def test_l4_allows_safe_action_without_approval():
+    assert authorize_action("hybrid_search") is True
+
+
+def test_l4_allows_monitor_action_without_approval():
+    # MONITOR is logged, not gated -- unlike CONFIRM it must not raise.
+    assert authorize_action("external_request") is True
+
+
+def test_l4_blocks_action_even_with_approval():
+    # BLOCK has no override, unlike CONFIRM: approved=True must not help.
+    with pytest.raises(SecurityError):
+        authorize_action("delete_data", approved=True)
+
+
 def test_token_budget_blocks_oversized_context():
     budget = TokenBudget(max_tokens=3)
     budget.consume("un deux")
