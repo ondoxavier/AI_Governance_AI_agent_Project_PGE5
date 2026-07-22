@@ -72,6 +72,35 @@ INJECTION_PATTERNS = [
 ]
 
 
+# Requests that target secrets or destructive actions directly, rather than
+# trying to reframe the assistant's instructions — kept as a separate list
+# (ported from Hakim's guardrails design) since the intent detected here is
+# "do something forbidden", not "ignore your rules".
+FORBIDDEN_PATTERNS = [
+    (r"delete\s+(the\s+)?database", "database_deletion"),
+    (r"drop\s+(the\s+)?database", "database_drop"),
+    (r"return\s+(all\s+)?api\s+keys?", "api_key_extraction"),
+    (r"(read|open|show|display)\s+(the\s+)?\.env", "environment_file_access"),
+    (r"(extract|exfiltrate|steal)\s+.{0,30}(secret|password|token|api\s+key)", "secret_exfiltration"),
+]
+
+
+# Zero-width / bidi-control characters that can be used to split a keyword
+# across an invisible boundary to slip past a regex (ported from Hakim's
+# guardrails design). Built from codepoints rather than literal characters in
+# source to avoid any ambiguity about what's actually in this file.
+_INVISIBLE_CODEPOINT_RANGES = [
+    (0x200B, 0x200F),  # zero-width space/joiners, LTR/RTL marks
+    (0x202A, 0x202E),  # bidi embedding/override controls
+    (0x2060, 0x2060),  # word joiner
+    (0x2066, 0x2069),  # bidi isolate controls
+    (0xFEFF, 0xFEFF),  # zero-width no-break space / BOM
+]
+INVISIBLE_CHARACTERS = re.compile(
+    "[" + "".join(chr(start) if start == end else f"{chr(start)}-{chr(end)}" for start, end in _INVISIBLE_CODEPOINT_RANGES) + "]"
+)
+
+
 ACTION_RISK_MATRIX = {
     "hybrid_search": {"risk": "low", "requires_approval": False},
     "classify_ai_act_risk": {"risk": "low", "requires_approval": False},
@@ -86,8 +115,14 @@ ACTION_RISK_MATRIX = {
 
 
 def normalize_text(text: str) -> str:
-    """Normalize user text before security checks."""
-    return unicodedata.normalize("NFKC", text or "").casefold()
+    """Normalize user text before security checks.
+
+    Strips zero-width/bidi-control characters first, so a keyword split
+    across an invisible boundary (e.g. a zero-width space inserted inside
+    "ignore") still matches after NFKC + casefold.
+    """
+    without_invisible = INVISIBLE_CHARACTERS.sub("", text or "")
+    return unicodedata.normalize("NFKC", without_invisible).casefold()
 
 
 def _decode_base64_tokens(text: str) -> list[str]:
@@ -106,31 +141,54 @@ def _decode_base64_tokens(text: str) -> list[str]:
     return decoded_texts
 
 
+def _first_injection_match(text: str) -> tuple[str, Verdict] | None:
+    for pattern, rule_name, severity in INJECTION_PATTERNS:
+        if re.search(pattern, text, flags=re.IGNORECASE):
+            return rule_name, severity
+    return None
+
+
+def _first_forbidden_match(text: str) -> str | None:
+    for pattern, rule_name in FORBIDDEN_PATTERNS:
+        if re.search(pattern, text, flags=re.IGNORECASE):
+            return rule_name
+    return None
+
+
 def l1_filter(user_input: str) -> str:
     """Apply L1 input filtering and return normalized text.
 
     BLOCKED and FLAGGED patterns both raise today (this filter stays
     conservative by default); the rule name and severity are included in the
-    error for logging/debugging.
+    error for logging/debugging. FORBIDDEN_PATTERNS (secrets/destructive
+    actions) also raise regardless of INJECTION_PATTERNS severity.
 
     Raises:
-        SecurityError: when a known prompt-injection pattern is detected,
-        directly or hidden behind a Base64-encoded token.
+        SecurityError: when a known prompt-injection or forbidden-action
+        pattern is detected, directly or hidden behind a Base64-encoded token.
     """
     # Base64 decoding must run on the raw input: normalize_text() casefolds,
     # which corrupts a Base64 token's case-sensitive alphabet before decoding.
     for decoded in _decode_base64_tokens(user_input if isinstance(user_input, str) else ""):
         decoded_normalized = normalize_text(decoded)
-        for pattern, rule_name, severity in INJECTION_PATTERNS:
-            if re.search(pattern, decoded_normalized, flags=re.IGNORECASE):
-                raise SecurityError(
-                    f"Entrée bloquée: instruction encodée (Base64) détectée [{rule_name}/{severity.value}]"
-                )
+        injection_match = _first_injection_match(decoded_normalized)
+        if injection_match:
+            rule_name, severity = injection_match
+            raise SecurityError(
+                f"Entrée bloquée: instruction encodée (Base64) détectée [{rule_name}/{severity.value}]"
+            )
+        forbidden_rule = _first_forbidden_match(decoded_normalized)
+        if forbidden_rule:
+            raise SecurityError(f"Entrée bloquée: action interdite encodée (Base64) détectée [{forbidden_rule}]")
 
     normalized = normalize_text(user_input)
-    for pattern, rule_name, severity in INJECTION_PATTERNS:
-        if re.search(pattern, normalized, flags=re.IGNORECASE):
-            raise SecurityError(f"Entrée bloquée par le filtre L1 [{rule_name}/{severity.value}]")
+    injection_match = _first_injection_match(normalized)
+    if injection_match:
+        rule_name, severity = injection_match
+        raise SecurityError(f"Entrée bloquée par le filtre L1 [{rule_name}/{severity.value}]")
+    forbidden_rule = _first_forbidden_match(normalized)
+    if forbidden_rule:
+        raise SecurityError(f"Entrée bloquée: action interdite détectée [{forbidden_rule}]")
     return normalized
 
 
@@ -158,9 +216,7 @@ def sanitise_tool_result(raw_result: Any, max_chars: int = 3_000) -> str:
         if not line:
             continue
         lowered = line.casefold()
-        suspicious = any(
-            re.search(pattern, lowered, flags=re.IGNORECASE) for pattern, _rule_name, _severity in INJECTION_PATTERNS
-        )
+        suspicious = _first_injection_match(lowered) is not None or _first_forbidden_match(lowered) is not None
         safe_lines.append("[INSTRUCTION SUSPECTE SUPPRIMEE]" if suspicious else line)
     cleaned = "\n".join(safe_lines)
 
