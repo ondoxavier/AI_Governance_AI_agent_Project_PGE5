@@ -18,8 +18,17 @@ Sous Windows PowerShell :
 
 ```powershell
 Copy-Item .env.example .env
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
 python src/agent.py
+```
+
+Si l'exécution de scripts PowerShell est bloquée, utilisez directement le Python de l'environnement :
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+.\.venv\Scripts\python.exe src\agent.py
 ```
 
 ## Exécution
