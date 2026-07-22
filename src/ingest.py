@@ -22,6 +22,8 @@ import sys
 import unicodedata
 from pathlib import Path
 
+from constants import UNKNOWN_DATE
+
 ROOT = Path(__file__).resolve().parents[1]
 DATA_DIR = ROOT / "data"
 TXT_DIR = ROOT / "processed_txt"
@@ -52,6 +54,18 @@ STATUS_BY_DOC_HINT = {
     "colorado": "obligatoire (etat)",
     "nist": "volontaire",
     "blueprint": "recommandation",
+}
+DATE_BY_DOC_ID = {
+    "EO_14110_Biden_AI_Framework": "2023-10-30",
+    "EO_14179_Trump_Deregulation": "2025-01-23",
+    "EO_14365_National_Policy_Framework": "2025-12-11",
+    "NIST_AI_RMF_1.0": "2023-01-26",
+    "NIST_AI_RMF_Playbook": "mise à jour continue",
+    "NIST_Generative_AI_Profile": "2024-07",
+    "Blueprint_AI_Bill_of_Rights": "2022-10-04",
+    "Colorado_SB24-205_Signed_Act": "2024-05-17",
+    "UK_White_Paper_Mar2023": "2023-03",
+    "UK_Government_Response_Feb2024": "2024-02-06",
 }
 
 # ── Legal structure detection (from the CIE 3.1 project, regexes kept as-is) ──
@@ -180,6 +194,7 @@ def build_chunks() -> list[dict]:
         for txt in sorted(corpus_dir.glob("*.txt")):
             doc_id = txt.stem
             status = base_status
+            date = DATE_BY_DOC_ID.get(doc_id, UNKNOWN_DATE)
             if base_status == "variable":
                 low = doc_id.lower()
                 status = next((s for hint, s in STATUS_BY_DOC_HINT.items() if hint in low), "variable")
@@ -199,6 +214,7 @@ def build_chunks() -> list[dict]:
                         "corpus": corpus_dir.name,
                         "jurisdiction": jurisdiction,
                         "status": status,
+                        "date": date,
                         "chapter": block["chapter"],
                         "article": block["article"],
                         "text": child,
@@ -214,6 +230,7 @@ def build_chunks() -> list[dict]:
             chunks.append({
                 "chunk_id": f"{md.stem}#0.{i}", "doc_id": md.stem, "corpus": "data",
                 "jurisdiction": "EU", "status": "resume non officiel",
+                "date": UNKNOWN_DATE,
                 "chapter": "", "article": "", "text": child, "parent_text": text[:PARENT_MAX_CHARS],
             })
     return chunks
