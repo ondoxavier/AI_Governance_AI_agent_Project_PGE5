@@ -6,12 +6,13 @@
 
 ---
 
-## État au 22/07/2026 (soir) — pour reprendre une session
+## État au 22/07/2026 (nuit) — pour reprendre une session
 
-- **Branche de travail : `feature/retrieval`** (pas encore fusionnée sur `main` — attente du go de l'utilisateur). Dernier commit : `ee4e2e1`.
+- **Branche de travail : `feature/retrieval`** (pas encore fusionnée sur `main` — attente du go de l'utilisateur). Dernier commit : `9d94e19`.
 - **Fait** : retrieval hybride réel (2968 chunks, 3 juridictions, dates sourcées), guardrails, MCP 4 tools, LLM DeepInfra branché dans `reasoning.py` (2 modèles : synthèse Llama-3.1-8B + critique Llama-3.3-70B), `evaluate.py` corrigé (coût réel tracké, asymétrie boilerplate retirée).
+- **⚠️ `origin/main` est cassé** : le PR #3 (`74f4af5`, branche `hakim`) a fusionné un `guardrails.py`/`reasoning.py` réécrits sur une architecture incompatible (`src.config`, `src.models`, `.llm` — aucun de ces modules n'existe dans le repo). `python src/agent.py` plante sur `main` (`ModuleNotFoundError`). **Ne pas fusionner `main` dans `feature/retrieval`.** À faire côté `main` (hors scope de cette branche) : revert du PR #3 ou fix par Hakim/Xavier avant la soumission.
+- **Décision prise sur `feature/retrieval`** : ne pas adopter l'architecture de Hakim (réécriture ~multi-heures, trop risqué <24h de la deadline). À la place, 2 de ses idées ont été portées dans le code existant (commit `9d94e19`) : détection d'injection encodée en Base64 (`l1_filter`), et neutralisation des instructions cachées dans les documents récupérés (`sanitise_tool_result`, câblé dans le prompt LLM). 13/13 tests de sécurité verts.
 - **Prochaine étape immédiate** : relancer `python src/evaluate.py` (~30-40 min avec le LLM réel branché) pour régénérer `evaluation/latest_results.json` avec des chiffres propres avant de les citer dans `REPORT.md`.
-- **Branche `hakim` (origin/hakim) dangereuse** : a divergé d'un point très ancien, un merge naïf effacerait tout le travail récent. À rebaser avant fusion.
 - **`.env` contient une vraie clé DeepInfra** (jamais commitée, `.gitignore` la couvre) — ne pas la redemander à l'utilisateur, elle est déjà configurée dans `tp_1/AI_Governance_AI_agent_Project_PGE5/.env`.
 - Dette restante : RAGAS reste un proxy local (pas de juge LLM cloud), Langfuse configuré côté code mais sans clés réelles.
 
