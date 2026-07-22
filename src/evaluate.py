@@ -15,7 +15,7 @@ import unicodedata
 
 from agent import run_agent
 from guardrails import SecurityError, TokenBudget
-from observability import ObservabilityTracer
+from observability import create_tracer
 from reasoning import format_answer, self_consistency
 from retrieval import SearchResult, hybrid_search, tokenize
 
@@ -167,14 +167,16 @@ def evaluate() -> dict:
         final = hybrid_search(case.question, top_k=3, jurisdiction=case.jurisdiction)
         baseline_answer = format_answer(self_consistency(case.question, baseline, k=1))
 
-        tracer = ObservabilityTracer(verbose=False)
+        tracer = create_tracer("evaluation.run", {"case_id": case.id})
         start = time.perf_counter()
-        answer = run_agent(case.question, tracer=tracer, verbose=False)
+        response = run_agent(case.question, jurisdiction=case.jurisdiction or "all", tracer=tracer)
+        answer = response.answer
         latency = time.perf_counter() - start
         total_latency += latency
 
-        for tool, count in tracer.count_tools().items():
-            total_tool_calls[tool] = total_tool_calls.get(tool, 0) + count
+        for event in tracer.events:
+            if event.name in {"retrieval.search", "guardrail.l4"}:
+                total_tool_calls[event.name] = total_tool_calls.get(event.name, 0) + 1
 
         rows.append(
             {

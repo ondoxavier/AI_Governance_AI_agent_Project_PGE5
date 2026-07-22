@@ -29,14 +29,14 @@ L'evaluation locale est reproductible avec `python src/evaluate.py`. Elle utilis
 |----------|----------|----------------|--------------------------------------|
 | context_recall | 0.4483 | 0.6417 | Passage d'un dense top-1 a BM25 + dense + RRF, donc plus de preuves retrouvees |
 | context_precision | 0.8000 | 0.6667 | Baisse due au contexte final plus large ; a corriger avec l'index complet et le cross-encoder reel |
-| faithfulness | 0.1006 | 0.1790 | Reponse mieux alignee avec les preuves recuperees |
-| answer_relevancy | 0.3000 | 0.4333 | Self-consistency k=3 et contexte multi-preuves |
+| faithfulness | 0.0490 | 0.1376 | Reponse mieux alignee avec les preuves recuperees |
+| answer_relevancy | 0.4667 | 0.5000 | Self-consistency k=3 et contexte multi-preuves |
 
 Mesures sur 10 executions :
 
 - Cout moyen : 0.0000 USD, car le mode local deterministe ne fait aucun appel LLM payant.
-- Latence moyenne : 0.0132 seconde.
-- Repartition des appels d'outils : `tool.hybrid_search` appele 10 fois.
+- Latence moyenne : 0.0055 seconde.
+- Repartition des appels d'outils : `guardrail.l4` appele 10 fois et `retrieval.search` appele 10 fois.
 - `TokenBudget` declenche : oui, test volontaire avec un budget de 3 tokens.
 
 Limite de l'evaluation : ces chiffres sont des metriques locales de type RAGAS, pas une execution RAGAS cloud avec juge LLM. Le fichier source des resultats est `evaluation/latest_results.json`.
