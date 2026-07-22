@@ -10,6 +10,8 @@ Contrairement à l'UE, les États-Unis n'ont pas de loi fédérale unique et con
 | `EO_14179_Trump_Deregulation.pdf` | Maison-Blanche (Trump) | 23/01/2025 | Décret exécutif — révoque l'EO 14110, oriente vers la dérégulation et la compétitivité. |
 | `EO_14365_National_Policy_Framework.pdf` | Maison-Blanche (Trump) | 11/12/2025 | Décret exécutif — crée un *AI Litigation Task Force* pour contester les lois d'État jugées "obstructives" à une politique IA nationale unifiée. |
 | `NIST_AI_RMF_1.0.pdf` | NIST | 26/01/2023 | Cadre de gestion des risques IA — **volontaire**, non contraignant, structuré en 4 fonctions (Govern/Map/Measure/Manage). |
+| `NIST_AI_RMF_Playbook.pdf` | NIST (AI Resource Center) | mise à jour continue | Guide pratique d'implémentation du RMF — **volontaire**, actions suggérées pour chaque fonction Govern/Map/Measure/Manage. |
+| `NIST_Generative_AI_Profile.pdf` (NIST AI 600-1) | NIST | 07/2024 | Profil sectoriel du RMF pour l'IA générative — **volontaire**, 12 catégories de risques spécifiques à la GenAI. |
 | `Blueprint_AI_Bill_of_Rights.pdf` | OSTP / Maison-Blanche | 04/10/2022 | Principes directeurs non contraignants (5 principes de protection des usagers). |
 | `Colorado_SB24-205_Signed_Act.pdf` | État du Colorado | 17/05/2024 | **Seule loi contraignante de structure proche de l'AI Act** : obligations pour développeurs/déployeurs de systèmes IA à haut risque (emploi, crédit, éducation, santé, logement, justice, assurance). Entrée en vigueur prévue 01/02/2026. |
 
