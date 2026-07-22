@@ -31,6 +31,11 @@ DEFAULT_QUESTION = (
 MAX_TOP_K = 10
 DEFAULT_TOP_K = 5
 DEFAULT_SELF_CONSISTENCY_K = 3
+# Sized for a real run against the full corpus: top_k=5 parent contexts
+# (up to ~4000 chars each) + self-consistency k=3 + one critic revision pass.
+# The old value (3500, inherited from the Lab B2 toy corpus) exhausted the
+# budget during retrieval alone and always degraded the response.
+DEFAULT_MAX_TOKENS = 40_000
 
 
 @dataclass
@@ -292,7 +297,7 @@ def run_agent(
     warnings: list[str] = []
     contexts: list[SearchResult] = []
     sources: list[dict[str, Any]] = []
-    budget = token_budget or TokenBudget(max_tokens=3500)
+    budget = token_budget or TokenBudget(max_tokens=DEFAULT_MAX_TOKENS)
     active_tracer = tracer or create_tracer(
         "agent.run",
         {"jurisdiction": jurisdiction, "top_k": top_k},

@@ -5,17 +5,56 @@ from __future__ import annotations
 from collections import Counter
 from dataclasses import dataclass, field
 from enum import Enum
+import unicodedata
 from typing import Any
 
 from constants import UNKNOWN_DATE
 from retrieval import SearchResult
 
 
+def _strip_accents(text: str) -> str:
+    """Fold accented characters to their ASCII base so matching is accent-
+    and encoding-insensitive (e.g. "credit" written without an accent in
+    source strings still matches "crédit" in the keyword list)."""
+    normalized = unicodedata.normalize("NFKD", text or "")
+    return "".join(ch for ch in normalized if not unicodedata.combining(ch))
+
+
+# Bilingual keywords: the risk LABELS (dict keys) stay French — they are used
+# verbatim in the obligations mapping and in the final conclusion text — but
+# the corpus is mostly English (US + UK + many EU guides), so the MATCHING
+# vocabulary must cover both languages or English-language questions and
+# passages never match the "élevé"/"interdit" categories at all.
 RISK_KEYWORDS = {
-    "interdit": ["manipulation subliminale", "notation sociale", "biométrique", "vulnérabilités"],
-    "élevé": ["emploi", "éducation", "crédit", "services essentiels", "migration", "justice", "infrastructures"],
-    "limité": ["transparence", "interagit", "contenu synthétique", "chatbot"],
-    "minimal": ["minimal", "faible impact", "bonnes pratiques"],
+    "interdit": [
+        "manipulation subliminale", "subliminal manipulation",
+        "notation sociale", "social scoring",
+        "biométrique", "biometric identification",
+        "vulnérabilités", "exploit vulnerabilities",
+    ],
+    "élevé": [
+        "emploi", "employment", "recruitment", "hiring",
+        "éducation", "education",
+        "crédit", "credit", "creditworthiness", "credit scoring", "loan",
+        "services essentiels", "essential services",
+        "migration",
+        "justice", "law enforcement",
+        "infrastructures", "critical infrastructure",
+    ],
+    "limité": [
+        "transparence", "transparency",
+        "interagit", "interacts with",
+        "contenu synthétique", "synthetic content", "deepfake",
+        "chatbot",
+    ],
+    "minimal": [
+        "minimal", "faible impact", "low impact",
+        "bonnes pratiques", "good practices",
+    ],
+}
+RISK_KEYWORDS_FOLDED = {
+    risk: [_strip_accents(keyword).casefold() for keyword in keywords]
+    for risk, keywords in RISK_KEYWORDS.items()
 }
 
 REQUIRED_INPUT_FIELDS = [
@@ -67,10 +106,10 @@ class ReasonedAnswer:
 
 def classify_ai_act_risk(question: str, contexts: list[SearchResult]) -> str:
     text = f"{question} " + " ".join(result.document.text for result in contexts)
-    lowered = text.casefold()
+    folded = _strip_accents(text).casefold()
     scores = {
-        risk: sum(1 for keyword in keywords if keyword in lowered)
-        for risk, keywords in RISK_KEYWORDS.items()
+        risk: sum(1 for keyword in keywords if keyword in folded)
+        for risk, keywords in RISK_KEYWORDS_FOLDED.items()
     }
     winner, score = Counter(scores).most_common(1)[0]
     return winner if score > 0 else "minimal"
