@@ -1,7 +1,50 @@
+# Python
 __pycache__/
 *.py[cod]
+*.egg-info/
+build/
+dist/
+
+# Tests & coverage
 .pytest_cache/
 pytest-cache-files-*/
-.env
+.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+
+# Environnements virtuels
 .venv/
 venv/
+env/
+
+# Secrets et config locale
+.env
+.env.*.local
+
+# IDE / éditeurs
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Logs et dumps de debug
+*.log
+error_dump.txt
+error_log.txt
+out.txt
+err.txt
+
+# Index vectoriels générés (régénérables via le script d'ingestion,
+# pas la donnée source : à ne pas committer, trop volumineux/spécifiques à la machine)
+index_data/
+*.faiss
+*.hnsw
+embeddings_cache/
+
+# Notebooks
+.ipynb_checkpoints/
