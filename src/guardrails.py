@@ -86,6 +86,15 @@ FORBIDDEN_PATTERNS = [
     (r"return\s+(all\s+)?api\s+keys?", "api_key_extraction"),
     (r"(read|open|show|display)\s+(the\s+)?\.env", "environment_file_access"),
     (r"(extract|exfiltrate|steal)\s+.{0,30}(secret|password|token|api\s+key)", "secret_exfiltration"),
+    # --- ported from Hakim's contains_dangerous_argument() (commit cb07402) ---
+    # These target free-text tool arguments (query/topic/text in mcp_server.py)
+    # rather than a natural-language framing of the request, so they catch
+    # payloads the rules above wouldn't (a path, a raw SQL statement, a shell
+    # chain) even without any "please do X" phrasing around them.
+    (r"\.\.[/\\]", "path_traversal"),
+    (r"(^|[/\\])\.env($|[/\\\s\"])", "environment_file_path_access"),
+    (r"\b(drop\s+table|drop\s+database|delete\s+from|truncate\s+table)\b", "sql_destructive"),
+    (r"(;|&&|\|\|)\s*(rm|del|curl|wget|powershell|bash|cmd)\b", "command_injection_shell"),
 ]
 
 
