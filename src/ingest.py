@@ -56,6 +56,7 @@ STATUS_BY_DOC_HINT = {
     "blueprint": "recommandation",
 }
 DATE_BY_DOC_ID = {
+    # ── US ──
     "EO_14110_Biden_AI_Framework": "2023-10-30",
     "EO_14179_Trump_Deregulation": "2025-01-23",
     "EO_14365_National_Policy_Framework": "2025-12-11",
@@ -64,8 +65,46 @@ DATE_BY_DOC_ID = {
     "NIST_Generative_AI_Profile": "2024-07",
     "Blueprint_AI_Bill_of_Rights": "2022-10-04",
     "Colorado_SB24-205_Signed_Act": "2024-05-17",
+    # ── UK ──
     "UK_White_Paper_Mar2023": "2023-03",
     "UK_Government_Response_Feb2024": "2024-02-06",
+    # ── EU — AI Act (Regulation (EU) 2024/1689, entry into force 2024-08-01;
+    #    per-article "date of entry into force" 2026/2027 is preserved in the
+    #    chunk text itself, this date is the instrument's own adoption date) ──
+    "Article6_AIAct": "2024-08-01",
+    "Article9_AIAct": "2024-08-01",
+    "Article10_AIAct": "2024-08-01",
+    "Article13_AIAct": "2024-08-01",
+    "Article14_AIAct": "2024-08-01",
+    "AI_act_articles": "2024-08-01",
+    "20230601STO93804_en": "2023-06-01",
+    "240827_FINAL_AI_ACT_Enforcement": "2024-08-27",
+    "67_Artificial_Intelligence_Act_AI_Act_3d29a6adb6": "2024-10",
+    "AL_Goodbody_-_Guide_to_the_AI_Act": "2024",
+    "ELI_Response_on_the_definition_of_an_AI_System": "2024",
+    "EU-AI-Act-Navigating-a-Brave-New-World": "2024-07",
+    "European Union Artificial Intelligence Act Guide": "2025-04-07",
+    "decoding-eu-ai-act": "2024",
+    "en-pdf-file-ai-act-guide": "2024-02",
+    "ey-gl-eu-ai-act-07-2024": "2024-07-12",
+    # ── EU — GDPR (Regulation (EU) 2016/679, Official Journal L 119, 4.5.2016) ──
+    "Article4_GDPR": "2016-05-04",
+    "Article5_GDPR": "2016-05-04",
+    "Article6_GDPR": "2016-05-04",
+    "Article9_GDPR": "2016-05-04",
+    "Article12_GDPR": "2016-05-04",
+    "Article22_GDPR": "2016-05-04",
+    "Article25_GDPR": "2016-05-04",
+    "Article30_GDPR": "2016-05-04",
+    "Article32_GDPR": "2016-05-04",
+    "Article35_GDPR": "2016-05-04",
+    "Article37_GDPR": "2016-05-04",
+    "GDPR_recitals": "2016-05-04",
+    "GDPR_recitals_official": "2016-05-04",
+    "21-04-27_aepd-edps_anonymisation_en_5": "2021-04-27",
+    "artificial-intelligence-systems-and-the-gdpr---a-data-protection-perspective-december": "2024-12",
+    "cnil_guide_securite_personnelle_ven_0": "2024",
+    "edpb_opinion_202428_ai-models_en": "2024-12-17",
 }
 
 # ── Legal structure detection (from the CIE 3.1 project, regexes kept as-is) ──
