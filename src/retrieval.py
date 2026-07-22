@@ -143,11 +143,6 @@ class _IndexRetriever:
                 rrf[idx] = rrf.get(idx, 0.0) + 1.0 / (60 + rank)
         fused = sorted(rrf, key=rrf.get, reverse=True)[:INITIAL_TOP_K]
 
-        if mode == "hybrid":
-            # Ablation mode: fusion without reranking
-            order = [(i, rrf[i]) for i in fused]
-            return self._to_results(order[:top_k], method="bm25+dense+rrf (no rerank)")
-
         # Cross-encoder reranking of the fused pool.
         # Two adjustments measured on tests/eval_retrieval.py (raw CE degraded MRR):
         #  - the passage shown to the CE is prefixed with its document/article
@@ -369,9 +364,8 @@ def hybrid_search(query: str, top_k: int = 4, data_dir: str | Path = "data",
     """Hybrid search over the ingested index; falls back to the local demo corpus.
 
     jurisdiction: optional filter — "EU", "US", "UK" or None/"all".
-    mode: "full"     — BM25 + dense + RRF + cross-encoder (default)
-          "hybrid"   — BM25 + dense + RRF, no reranking (ablation)
-          "baseline" — naive top-k cosine only (RAGAS/eval "before" reference)
+    mode: "full"     — BM25 + dense + RRF + cross-encoder (default; the report's "Final")
+          "baseline" — naive top-k cosine only (the report's "Baseline")
     """
     retriever = _IndexRetriever.get()
     if retriever is not None:

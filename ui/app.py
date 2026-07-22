@@ -27,7 +27,7 @@ from eval_retrieval import GOLD, evaluate  # noqa: E402
 
 app = Flask(__name__)
 
-VALID_MODES = {"baseline", "hybrid", "full"}
+VALID_MODES = {"baseline", "full"}
 VALID_JURISDICTIONS = {"all", "eu", "us", "uk"}
 
 

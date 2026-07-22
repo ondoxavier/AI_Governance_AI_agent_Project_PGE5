@@ -123,10 +123,9 @@ def main() -> int:
           "(ex. le PDF de l'article officiel lui-même)")
     print("tolérant = les documents secondaires (guides) comptent aussi\n")
 
-    labels = {"baseline": "baseline (cosine seul)",
-              "hybrid": "hybride (BM25+dense+RRF)",
-              "full": "complet (hybride + cross-enc.)"}
-    modes = ("baseline", "hybrid", "full")
+    labels = {"baseline": "Baseline (cosine seul)",
+              "full": "Final (BM25+dense+RRF+cross-encoder)"}
+    modes = ("baseline", "full")
     rows = {}
     for mode in modes:
         print(f"→ mode {mode}…")
