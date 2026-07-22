@@ -14,3 +14,8 @@ mcp[cli]>=1.0.0
 
 # Observabilite optionnelle (fallback local si non configure)
 langfuse>=2.0.0
+
+# LLM de raisonnement (DeepInfra, API compatible OpenAI) - optionnel, fallback
+# deterministe si la cle DEEPINFRA_API_KEY est absente
+openai>=1.0.0
+python-dotenv>=1.0.0
