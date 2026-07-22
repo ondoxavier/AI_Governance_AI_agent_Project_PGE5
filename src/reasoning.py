@@ -9,6 +9,7 @@ import re
 import unicodedata
 from typing import Any
 
+import guardrails
 import llm_client
 from constants import UNKNOWN_DATE
 from retrieval import SearchResult
@@ -261,9 +262,10 @@ def _build_context_block(contexts: list[SearchResult]) -> str:
     lines = []
     for result in contexts[:5]:
         doc = result.document
+        safe_text = guardrails.sanitise_tool_result(doc.text[:500], max_chars=500)
         lines.append(
             f"- [{doc.jurisdiction or '?'} | statut: {doc.status or 'inconnu'} | "
-            f"date: {doc.date or UNKNOWN_DATE}] {doc.title}: {doc.text[:500]}"
+            f"date: {doc.date or UNKNOWN_DATE}] {doc.title}: {safe_text}"
         )
     return "\n".join(lines)
 
