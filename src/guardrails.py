@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 from dataclasses import dataclass
+from enum import Enum
 import html
 import json
 import re
@@ -15,16 +16,59 @@ class SecurityError(ValueError):
     """Raised when a guardrail blocks an input or action."""
 
 
+class Verdict(str, Enum):
+    """Severity assigned to a matched INJECTION_PATTERNS entry."""
+
+    BLOCKED = "blocked"
+    FLAGGED = "flagged"
+
+
+# Each entry: (regex, rule_name, severity). Both severities currently raise
+# in l1_filter (this filter stays conservative by default) — FLAGGED marks
+# patterns that are suspicious-but-plausible rather than unambiguously
+# malicious, kept distinct for logging and for a future lenient mode.
 INJECTION_PATTERNS = [
-    r"\bignore\s+(all\s+)?(previous|above|prior)\s+instructions\b",
-    r"\boublie\s+(toutes\s+)?(les\s+)?instructions\b",
-    r"\br[eé]v[eè]le\s+(le\s+)?(prompt|syst[eè]me|secret|token|cl[eé])\b",
-    r"\bdeveloper\s+message\b",
-    r"\bsystem\s+prompt\b",
-    r"\bexfiltrat(e|ion)\b",
-    r"\bapi[_ -]?key\b",
-    r"\bdelete\s+all\b",
-    r"\brm\s+-rf\b",
+    # --- pre-existing rules ---
+    (r"\bignore\s+(all\s+)?(previous|above|prior)\s+instructions\b", "direct_override_extended", Verdict.BLOCKED),
+    (r"\br[eé]v[eè]le\s+(le\s+)?(prompt|syst[eè]me|secret|token|cl[eé])\b", "reveal_secret_fr", Verdict.BLOCKED),
+    (r"\bdeveloper\s+message\b", "developer_message_mention", Verdict.BLOCKED),
+    (r"\bsystem\s+prompt\b", "system_prompt_mention", Verdict.BLOCKED),
+    (r"\bexfiltrat(e|ion)\b", "exfiltration_keyword", Verdict.BLOCKED),
+    (r"\bapi[_ -]?key\b", "api_key_mention", Verdict.BLOCKED),
+    (r"\bdelete\s+all\b", "delete_all", Verdict.BLOCKED),
+    (r"\brm\s+-rf\b", "rm_rf", Verdict.BLOCKED),
+    # --- ported from Hakim's guardrails design (commit cb07402) ---
+    (r"ignore\s+(all\s+)?(previous\s+|prior\s+)?instructions?", "direct_override", Verdict.BLOCKED),
+    (r"disregard\s+(all\s+)?(previous\s+|prior\s+)?instructions?", "override_variant", Verdict.BLOCKED),
+    (r"forget\s+(all\s+)?(previous\s+|prior\s+)?instructions?", "forget_instructions", Verdict.BLOCKED),
+    (r"forget\s+everything", "forget_everything", Verdict.BLOCKED),
+    (r"new\s+(system\s+)?instructions?\s*:", "instruction_injection", Verdict.BLOCKED),
+    # Article made mandatory (Hakim's original made it optional): "you are now
+    # eligible/reviewing/..." is a normal English business sentence and this
+    # widened match blocked it outright — false positives on the agent's own
+    # golden-path questions. Requiring "a/an/the" keeps the jailbreak framing
+    # ("you are now a DAN", "you are now the administrator") without that risk.
+    (r"you\s+are\s+now\s+(?:an?|the)\s+[\w\-]+", "role_injection", Verdict.BLOCKED),
+    (r"play\s+the\s+role\s+of", "fictional_framing", Verdict.FLAGGED),
+    (r"<\s*/?\s*(admin|system|developer|trust|override)\s*>", "tag_injection", Verdict.BLOCKED),
+    (
+        r"(show|repeat|output|print|reveal|display)"
+        r"\s+.{0,40}(prompt|system\s+instructions?|developer\s+message)",
+        "prompt_extraction",
+        Verdict.BLOCKED,
+    ),
+    (
+        r"ignore\s+(toutes?\s+les\s+)?instructions?\s+(pr[ée]c[ée]dentes?|ant[ée]rieures?)",
+        "direct_override_fr",
+        Verdict.BLOCKED,
+    ),
+    (r"oublie\s+(toutes?\s+)?(les\s+)?instructions?", "forget_instructions_fr", Verdict.BLOCKED),
+    (r"ne\s+tiens\s+pas\s+compte\s+des\s+instructions?", "override_variant_fr", Verdict.BLOCKED),
+    (
+        r"(affiche|montre|r[ée]p[èe]te|r[ée]v[èe]le)\s+.{0,40}(prompt\s+syst[èe]me|instructions?\s+syst[èe]me)",
+        "prompt_extraction_fr",
+        Verdict.BLOCKED,
+    ),
 ]
 
 
@@ -65,6 +109,10 @@ def _decode_base64_tokens(text: str) -> list[str]:
 def l1_filter(user_input: str) -> str:
     """Apply L1 input filtering and return normalized text.
 
+    BLOCKED and FLAGGED patterns both raise today (this filter stays
+    conservative by default); the rule name and severity are included in the
+    error for logging/debugging.
+
     Raises:
         SecurityError: when a known prompt-injection pattern is detected,
         directly or hidden behind a Base64-encoded token.
@@ -73,14 +121,16 @@ def l1_filter(user_input: str) -> str:
     # which corrupts a Base64 token's case-sensitive alphabet before decoding.
     for decoded in _decode_base64_tokens(user_input if isinstance(user_input, str) else ""):
         decoded_normalized = normalize_text(decoded)
-        for pattern in INJECTION_PATTERNS:
+        for pattern, rule_name, severity in INJECTION_PATTERNS:
             if re.search(pattern, decoded_normalized, flags=re.IGNORECASE):
-                raise SecurityError(f"Entrée bloquée: instruction encodée (Base64) détectée: {pattern}")
+                raise SecurityError(
+                    f"Entrée bloquée: instruction encodée (Base64) détectée [{rule_name}/{severity.value}]"
+                )
 
     normalized = normalize_text(user_input)
-    for pattern in INJECTION_PATTERNS:
+    for pattern, rule_name, severity in INJECTION_PATTERNS:
         if re.search(pattern, normalized, flags=re.IGNORECASE):
-            raise SecurityError(f"Entrée bloquée par le filtre L1: {pattern}")
+            raise SecurityError(f"Entrée bloquée par le filtre L1 [{rule_name}/{severity.value}]")
     return normalized
 
 
@@ -108,7 +158,9 @@ def sanitise_tool_result(raw_result: Any, max_chars: int = 3_000) -> str:
         if not line:
             continue
         lowered = line.casefold()
-        suspicious = any(re.search(pattern, lowered, flags=re.IGNORECASE) for pattern in INJECTION_PATTERNS)
+        suspicious = any(
+            re.search(pattern, lowered, flags=re.IGNORECASE) for pattern, _rule_name, _severity in INJECTION_PATTERNS
+        )
         safe_lines.append("[INSTRUCTION SUSPECTE SUPPRIMEE]" if suspicious else line)
     cleaned = "\n".join(safe_lines)
 
