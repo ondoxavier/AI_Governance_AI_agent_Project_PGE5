@@ -19,23 +19,24 @@ Question utilisateur
   -> traces observability/latest_trace.jsonl
 ```
 
-Decision de conception : le projet garde un mode local deterministe. Cela garantit que `python src/agent.py`, `python src/evaluate.py` et `pytest` fonctionnent depuis un clone vierge, meme sans cle LLM ni index vectoriel. Le compromis est que la self-consistency et les scores de synthese sont moins riches qu'avec un LLM branche sur Langfuse.
+Decision de conception : le projet garde un mode local deterministe de secours. Cela garantit que `python src/agent.py`, `python src/evaluate.py` et `pytest` fonctionnent depuis un clone vierge, meme sans cle LLM ni index vectoriel. Quand `DEEPINFRA_API_KEY` est configuree dans `.env`, la couche de raisonnement effectue trois syntheses LLM via DeepInfra puis un passage critique independant.
 
 ## 3. Evaluation
 
-L'evaluation locale est reproductible avec `python src/evaluate.py`. Elle utilise 10 questions : 6 UE, 2 US et 2 UK. La baseline correspond a une recherche dense top-1 sans RRF ni reranking. La version finale utilise BM25 + dense + RRF + reranking en mode fallback local.
+L'evaluation locale est reproductible avec `python src/evaluate.py`. Elle utilise 10 questions : 6 UE, 2 US et 2 UK. La baseline correspond a une recherche dense top-1 sans RRF ni reranking. La version finale utilise BM25 + dense + RRF + reranking, puis self-consistency `k=3` et critique LLM lorsque DeepInfra est configure.
 
 | Metrique | Baseline | Version finale | Technique a l'origine du changement |
 |----------|----------|----------------|--------------------------------------|
 | context_recall | 0.4483 | 0.6417 | Passage d'un dense top-1 a BM25 + dense + RRF, donc plus de preuves retrouvees |
 | context_precision | 0.8000 | 0.6667 | Baisse due au contexte final plus large ; a corriger avec l'index complet et le cross-encoder reel |
-| faithfulness | 0.0490 | 0.1376 | Reponse mieux alignee avec les preuves recuperees |
+| faithfulness | 0.0490 | 0.1359 | Reponse mieux alignee avec les preuves recuperees |
 | answer_relevancy | 0.4667 | 0.5000 | Self-consistency k=3 et contexte multi-preuves |
 
 Mesures sur 10 executions :
 
-- Cout moyen : 0.0000 USD, car le mode local deterministe ne fait aucun appel LLM payant.
-- Latence moyenne : 0.0055 seconde.
+- LLM utilise : oui (`llm_used=true`, DeepInfra configure via `.env`).
+- Cout estime : 0.0000 USD dans `latest_results.json`, car la reponse API n'a pas expose de compteur de tokens exploitable par l'estimateur local ; ce chiffre ne doit donc pas etre interprete comme un cout reel nul.
+- Latence moyenne : 29.5902 secondes par question avec DeepInfra.
 - Repartition des appels d'outils : `guardrail.l4` appele 10 fois et `retrieval.search` appele 10 fois.
 - `TokenBudget` declenche : oui, test volontaire avec un budget de 3 tokens.
 
@@ -57,9 +58,9 @@ Obligation retenue : transparence et validation humaine. La sortie contient des 
 
 Premiere limite : l'evaluation actuelle tourne en fallback local. Les PDF du corpus ne sont pas tous indexes tant que `python src/ingest.py` n'a pas ete execute avec les dependances ML. Cela penalise surtout le RGPD et la precision finale.
 
-Deuxieme limite : l'observabilite est exportee localement en JSONL avec des noms de spans compatibles Langfuse, mais les traces ne sont pas encore envoyees vers Langfuse Cloud. Prochain sprint : brancher le SDK Langfuse avec `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY` et `LANGFUSE_HOST`, puis capturer les spans LLM reels.
+Deuxieme limite : l'observabilite est exportee localement en JSONL avec des noms de spans compatibles Langfuse. La trace `observability/latest_trace.jsonl` montre les spans `guardrail.l1`, `guardrail.l4`, `retrieval.search`, `reasoning.synthesis.1/2/3`, `reasoning.self_consistency`, `critic.review` et `agent.run`. Prochain sprint : brancher le SDK Langfuse avec `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY` et `LANGFUSE_HOST`, puis envoyer ces traces vers Langfuse Cloud.
 
-Troisieme limite : la synthese est deterministe. Pour maximiser le rubric, il faut remplacer le fallback par trois appels LLM independants et calculer la confiance a partir du vote 3/3, 2/3 ou desaccord.
+Troisieme limite : l'index vectoriel complet n'est pas encore construit dans l'environnement local ; les resultats affichent encore `bm25+dense+rerank (fallback-demo)`. Pour ameliorer le rappel documentaire et la precision, il faut executer `python src/ingest.py` avec les dependances ML, puis relancer `python src/evaluate.py`.
 
 ## 7. Declaration d'utilisation de l'IA
 

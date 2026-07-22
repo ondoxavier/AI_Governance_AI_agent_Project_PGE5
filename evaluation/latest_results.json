@@ -1,11 +1,11 @@
 {
   "num_questions": 10,
-  "llm_used": false,
+  "llm_used": true,
   "cost_average_usd": 0.0,
   "cost_total_usd": 0.0,
-  "cost_note": "Aucune cle DEEPINFRA_API_KEY configuree: fallback deterministe, aucun appel LLM paye.",
+  "cost_note": "Cout estime a partir de l'usage reel DeepInfra (tarifs indicatifs juillet 2026, a verifier sur deepinfra.com/pricing).",
   "token_usage_by_model": {},
-  "latency_average_s": 0.0058,
+  "latency_average_s": 29.5902,
   "baseline": {
     "context_recall": 0.4483,
     "context_precision": 0.8,
@@ -27,7 +27,7 @@
     {
       "id": "eu_art5_prohibited",
       "jurisdiction": "EU",
-      "latency_s": 0.0077,
+      "latency_s": 29.3779,
       "baseline_context_recall": 0.75,
       "baseline_context_precision": 1.0,
       "final_context_recall": 0.75,
@@ -41,7 +41,7 @@
     {
       "id": "eu_recruitment_high_risk",
       "jurisdiction": "EU",
-      "latency_s": 0.0047,
+      "latency_s": 29.2721,
       "baseline_context_recall": 0.0,
       "baseline_context_precision": 0.0,
       "final_context_recall": 0.5,
@@ -55,7 +55,7 @@
     {
       "id": "eu_provider_obligations",
       "jurisdiction": "EU",
-      "latency_s": 0.0043,
+      "latency_s": 29.7887,
       "baseline_context_recall": 0.75,
       "baseline_context_precision": 1.0,
       "final_context_recall": 1.0,
@@ -69,7 +69,7 @@
     {
       "id": "eu_technical_documentation",
       "jurisdiction": "EU",
-      "latency_s": 0.0048,
+      "latency_s": 29.7499,
       "baseline_context_recall": 0.5,
       "baseline_context_precision": 1.0,
       "final_context_recall": 0.75,
@@ -83,7 +83,7 @@
     {
       "id": "eu_human_oversight",
       "jurisdiction": "EU",
-      "latency_s": 0.0068,
+      "latency_s": 29.5927,
       "baseline_context_recall": 0.3333,
       "baseline_context_precision": 1.0,
       "final_context_recall": 0.6667,
@@ -97,7 +97,7 @@
     {
       "id": "gdpr_dpia",
       "jurisdiction": "EU",
-      "latency_s": 0.0043,
+      "latency_s": 29.6521,
       "baseline_context_recall": 0.0,
       "baseline_context_precision": 0.0,
       "final_context_recall": 0.0,
@@ -111,7 +111,7 @@
     {
       "id": "us_nist_functions",
       "jurisdiction": "US",
-      "latency_s": 0.0072,
+      "latency_s": 29.8526,
       "baseline_context_recall": 1.0,
       "baseline_context_precision": 1.0,
       "final_context_recall": 1.0,
@@ -125,7 +125,7 @@
     {
       "id": "us_colorado_credit",
       "jurisdiction": "US",
-      "latency_s": 0.0056,
+      "latency_s": 29.4496,
       "baseline_context_recall": 0.5,
       "baseline_context_precision": 1.0,
       "final_context_recall": 0.5,
@@ -139,7 +139,7 @@
     {
       "id": "uk_principles",
       "jurisdiction": "UK",
-      "latency_s": 0.0072,
+      "latency_s": 29.7205,
       "baseline_context_recall": 0.4,
       "baseline_context_precision": 1.0,
       "final_context_recall": 1.0,
@@ -153,7 +153,7 @@
     {
       "id": "uk_vs_eu",
       "jurisdiction": "UK",
-      "latency_s": 0.0052,
+      "latency_s": 29.4457,
       "baseline_context_recall": 0.25,
       "baseline_context_precision": 1.0,
       "final_context_recall": 0.25,
