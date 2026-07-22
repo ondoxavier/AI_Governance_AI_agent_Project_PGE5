@@ -21,6 +21,47 @@ Avec le temps restant, **on n'optimise pas la qualité, on optimise les points d
 
 **Ce qu'un chatbot générique ne fait pas :** ancrage sur les textes exacts (pas d'hallucination de numéros d'article), grille de décision structurée par juridiction, et surtout **la discipline statut** (voir §2).
 
+### 1.1 Contrat d'entrée / sortie de l'agent
+
+**Entrée — l'utilisateur décrit son système via 10 champs** (formulaire ou texte libre dont le LLM extrait les champs à l'étape de planification) :
+
+| # | Champ | Ce qu'il déclenche dans l'analyse |
+|---|---|---|
+| 1 | Objectif du système | Rattachement aux catégories Annexe III / Art. 5 |
+| 2 | Personnes concernées | Vulnérabilité (mineurs → Art. 5), travailleurs (information des représentants) |
+| 3 | Données utilisées | RGPD (Art. 9 données sensibles), gouvernance des données (Art. 10 AI Act) |
+| 4 | Décisions produites | Effet juridique → haut risque probable, Art. 22 RGPD |
+| 5 | Degré d'autonomie | Exigences de contrôle humain (Art. 14) |
+| 6 | Secteur d'activité | Règles sectorielles US (Colorado : emploi/crédit...) et régulateur UK compétent |
+| 7 | Pays de déploiement | Déclenche la comparaison UE / US / UK |
+| 8 | Présence de biométrie | Art. 5 (interdictions) / Annexe III (haut risque) |
+| 9 | Fournisseur du modèle | Détermination du rôle réglementaire |
+| 10 | Possibilité d'intervention humaine | Art. 14, atténuation du niveau de risque |
+
+**Sortie — 8 éléments obligatoires**, chacun avec source/date/statut :
+1. **Rôle réglementaire** de l'entreprise (fournisseur / déployeur / importateur — les obligations diffèrent : Art. 16+ vs Art. 26)
+2. **Niveau de risque probable** (interdit / haut / limité / minimal)
+3. **Articles et annexes pertinents** (cités depuis le contexte récupéré uniquement)
+4. **Obligations applicables** (liées au rôle ET au niveau)
+5. **Informations manquantes** (champs non fournis qui changeraient l'analyse — plutôt que deviner)
+6. **Comparaison UE / US / UK** (un bloc par juridiction demandée, chacun étiqueté statut)
+7. **Niveau de confiance** — dérivé du vote Self-Consistency k=3 (3/3 ≈ 0,9 · 2/3 ≈ 0,6 · désaccord ≈ 0,3), jamais un chiffre inventé par le LLM
+8. **Recommandation de validation humaine** (= l'obligation de transparence Art. 50, voir §7)
+
+**Exemple de sortie de référence** (cas : PME française, tri de candidatures) — à conserver comme cas de test de non-régression :
+
+```
+Classification probable : système d'IA à haut risque
+Motif : analyse et filtrage de candidatures dans le cadre de l'emploi.
+Base juridique : Annexe III — recrutement ou sélection des personnes.
+Rôle probable de l'entreprise : Déployeur, sous réserve qu'elle ne développe pas elle-même le système.
+Obligations principales : contrôle humain ; surveillance des journaux ; respect des instructions
+du fournisseur ; analyse d'impact sur les droits fondamentaux si conditions réunies ;
+information des travailleurs ou représentants concernés.
+Confiance : 0,87 (self-consistency : 3/3 conclusions concordantes)
+Limite : pré-évaluation à valider par un professionnel compétent.
+```
+
 ---
 
 ## 2. Règle de conception impérative — source / date / statut
@@ -84,9 +125,10 @@ Hybrid BM25 + dense (MiniLM) + RRF + cross-encoder, chunking parent-enfant jurid
 
 ### 5.2 Reasoning — ❌ PRIORITÉ 1 (10 pts)
 Brancher un **vrai LLM** (clé Anthropic/OpenAI dans `.env`) dans `reasoning.py` :
-- Prompt de synthèse few-shot (2-3 exemples) au format PREUVES / ANALYSE / CONCLUSION / CONFIANCE
+- **Étape d'extraction** : le LLM extrait les 10 champs du contrat d'entrée (§1.1) depuis le texte libre de l'utilisateur ; champs absents → listés dans « Informations manquantes » (jamais devinés)
+- Prompt de synthèse few-shot (2-3 exemples, dont l'exemple de référence du §1.1) au format PREUVES / ANALYSE / CONCLUSION / CONFIANCE, produisant les **8 éléments de sortie** du contrat (rôle réglementaire, niveau de risque, articles, obligations, manquants, comparaison par juridiction, confiance, validation humaine)
 - Le prompt exige : chaque preuve citée avec `[source · juridiction · statut]` (les champs sont déjà dans `SearchResult.document`)
-- **Self-Consistency k=3 réel** : 3 appels LLM indépendants sur la synthèse, vote majoritaire sur la CONCLUSION, désaccord → CONFIANCE basse
+- **Self-Consistency k=3 réel** : 3 appels LLM indépendants sur la synthèse, vote majoritaire sur la CONCLUSION ; la confiance numérique est **dérivée du vote** (3/3 ≈ 0,9 · 2/3 ≈ 0,6 · désaccord ≈ 0,3) et affichée avec sa justification
 - Conserver le mode déterministe actuel comme fallback sans clé API (même pattern que retrieval)
 
 ### 5.3 Agent critique — ⚠️ à renforcer avec le LLM
