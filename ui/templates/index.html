@@ -1,0 +1,398 @@
+<!DOCTYPE html><html lang="fr" class="light"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>PGE5 · Test du retrieval</title><link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet"><link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=block" rel="stylesheet"><script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script><script id="tailwind-config">try{
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            "colors": {
+                    "inverse-surface": "#31302d",
+                    "outline": "#74786f",
+                    "error": "#ba1a1a",
+                    "on-primary-fixed": "#0f1f09",
+                    "inverse-on-surface": "#f3f0eb",
+                    "surface-container-high": "#ebe8e3",
+                    "outline-variant": "#c4c8bd",
+                    "on-secondary-container": "#695d7e",
+                    "tertiary-container": "#506f8b",
+                    "tertiary-fixed-dim": "#aacaea",
+                    "on-error-container": "#93000a",
+                    "on-background": "#1c1c19",
+                    "error-container": "#ffdad6",
+                    "surface-container-lowest": "#ffffff",
+                    "surface-dim": "#dcdad5",
+                    "on-tertiary-fixed-variant": "#294964",
+                    "tertiary": "#375672",
+                    "on-primary-container": "#dff4cf",
+                    "inverse-primary": "#b8cda9",
+                    "background": "#fcf9f4",
+                    "surface-tint": "#516447",
+                    "on-error": "#ffffff",
+                    "on-secondary-fixed": "#201632",
+                    "on-tertiary": "#ffffff",
+                    "on-tertiary-fixed": "#001d32",
+                    "surface": "#fcf9f4",
+                    "on-surface": "#1c1c19",
+                    "primary": "#46583c",
+                    "surface-variant": "#e5e2dd",
+                    "secondary": "#645979",
+                    "on-secondary-fixed-variant": "#4c4260",
+                    "secondary-fixed": "#ebddff",
+                    "primary-container": "#5e7153",
+                    "on-primary-fixed-variant": "#3a4c31",
+                    "tertiary-fixed": "#cde5ff",
+                    "surface-container-low": "#f6f3ee",
+                    "on-surface-variant": "#444840",
+                    "primary-fixed-dim": "#b8cda9",
+                    "surface-bright": "#fcf9f4",
+                    "on-secondary": "#ffffff",
+                    "on-tertiary-container": "#e3efff",
+                    "secondary-container": "#e8d9ff",
+                    "surface-container": "#f0ede9",
+                    "primary-fixed": "#d4e9c4",
+                    "secondary-fixed-dim": "#cfc0e5",
+                    "surface-container-highest": "#e5e2dd",
+                    "on-primary": "#ffffff"
+            },
+            "borderRadius": {
+                    "DEFAULT": "0.25rem",
+                    "lg": "0.5rem",
+                    "xl": "0.75rem",
+                    "full": "9999px"
+            },
+            "spacing": {
+                    "container-max": "1440px",
+                    "gutter": "24px",
+                    "base-unit": "8px",
+                    "panel-gap": "16px",
+                    "margin": "40px"
+            },
+            "fontFamily": {
+                    "body-md": ["Hanken Grotesk"],
+                    "label-md": ["Hanken Grotesk"],
+                    "headline-xl": ["Hanken Grotesk"],
+                    "label-sm": ["Hanken Grotesk"],
+                    "headline-lg": ["Hanken Grotesk"],
+                    "body-lg": ["Hanken Grotesk"],
+                    "headline-md": ["Hanken Grotesk"],
+                    "headline-lg-mobile": ["Hanken Grotesk"]
+            },
+            "fontSize": {
+                    "body-md": ["16px", {"lineHeight": "24px", "fontWeight": "400"}],
+                    "label-md": ["14px", {"lineHeight": "20px", "letterSpacing": "0.02em", "fontWeight": "600"}],
+                    "headline-xl": ["40px", {"lineHeight": "48px", "letterSpacing": "-0.02em", "fontWeight": "700"}],
+                    "label-sm": ["12px", {"lineHeight": "16px", "fontWeight": "500"}],
+                    "headline-lg": ["32px", {"lineHeight": "40px", "letterSpacing": "-0.01em", "fontWeight": "600"}],
+                    "body-lg": ["18px", {"lineHeight": "28px", "fontWeight": "400"}],
+                    "headline-md": ["24px", {"lineHeight": "32px", "fontWeight": "600"}],
+                    "headline-lg-mobile": ["28px", {"lineHeight": "36px", "fontWeight": "600"}]
+            }
+          },
+        },
+      }
+    }catch(_e){}</script></head><body class="bg-background text-on-surface flex min-h-screen">
+
+    <!-- SideNavBar -->
+    <nav class="h-screen w-64 fixed left-0 top-0 bg-surface-container-low border-r border-outline-variant flex flex-col py-base-unit px-gutter z-50">
+        <div class="mb-10 mt-4">
+            <h1 class="text-headline-md font-headline-md font-bold text-primary">PGE5</h1>
+            <p class="text-label-sm text-on-surface-variant opacity-70">Agent de gouvernance IA</p>
+        </div>
+
+        <div class="flex flex-col gap-2 flex-grow">
+            <a href="#" class="flex items-center gap-3 px-4 py-3 rounded-lg text-on-surface-variant font-medium hover:bg-surface-container-high transition-colors duration-200">
+                <span class="material-symbols-outlined">analytics</span>
+                <span class="text-label-md font-label-md">Analyse de conformité</span>
+            </a>
+            <a href="#" class="flex items-center gap-3 px-4 py-3 rounded-lg text-on-surface-variant font-medium hover:bg-surface-container-high transition-colors duration-200">
+                <span class="material-symbols-outlined">gavel</span>
+                <span class="text-label-md font-label-md">Comparaison des juridictions</span>
+            </a>
+            <a href="#" class="flex items-center gap-3 px-4 py-3 rounded-lg text-primary font-bold border-r-4 border-primary bg-primary-container/20 transition-all duration-150 active:scale-[0.98]">
+                <span class="material-symbols-outlined">search_check</span>
+                <span class="text-label-md font-label-md">Test du retrieval</span>
+            </a>
+        </div>
+
+        <div class="flex flex-col gap-1 border-t border-outline-variant pt-4">
+            <a href="#" class="flex items-center gap-3 px-4 py-2 rounded-lg text-on-surface-variant font-medium hover:bg-surface-container-high transition-colors duration-200">
+                <span class="material-symbols-outlined">settings</span>
+                <span class="text-label-md font-label-md">Paramètres</span>
+            </a>
+            <a href="#" class="flex items-center gap-3 px-4 py-2 rounded-lg text-on-surface-variant font-medium hover:bg-surface-container-high transition-colors duration-200">
+                <span class="material-symbols-outlined">help</span>
+                <span class="text-label-md font-label-md">Aide</span>
+            </a>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="flex-grow ml-64 flex flex-col min-h-screen">
+
+        <header class="flex justify-between items-center h-16 px-gutter sticky top-0 z-40 bg-surface border-b border-outline-variant">
+            <div class="flex items-center gap-2">
+                <span class="text-headline-md font-headline-md font-bold text-primary">PGE5 · Agent de gouvernance IA</span>
+            </div>
+            <div class="flex items-center gap-4">
+                <span id="indexModeBadge" class="text-label-sm px-3 py-1 rounded-full bg-surface-container-high text-on-surface-variant">index: ?</span>
+            </div>
+        </header>
+
+        <div class="p-margin flex flex-col gap-8 flex-grow">
+
+            <!-- Metrics Strip -->
+            <section class="grid grid-cols-1 md:grid-cols-3 gap-gutter">
+                <div class="bg-surface-container-lowest border border-outline-variant p-gutter rounded-xl shadow-sm flex items-center justify-between">
+                    <div>
+                        <p class="text-label-sm text-on-surface-variant uppercase tracking-wider mb-1">Hit Rate @3</p>
+                        <h3 id="metricHitRate" class="text-headline-lg font-headline-lg text-primary">—</h3>
+                    </div>
+                    <div class="w-12 h-12 rounded-full bg-primary-container/20 flex items-center justify-center">
+                        <span class="material-symbols-outlined text-primary">target</span>
+                    </div>
+                </div>
+                <div class="bg-surface-container-lowest border border-outline-variant p-gutter rounded-xl shadow-sm flex items-center justify-between">
+                    <div>
+                        <p class="text-label-sm text-on-surface-variant uppercase tracking-wider mb-1">MRR (Mean Reciprocal Rank)</p>
+                        <h3 id="metricMRR" class="text-headline-lg font-headline-lg text-secondary">—</h3>
+                    </div>
+                    <div class="w-12 h-12 rounded-full bg-secondary-container/30 flex items-center justify-center">
+                        <span class="material-symbols-outlined text-secondary">leaderboard</span>
+                    </div>
+                </div>
+                <div class="bg-surface-container-lowest border border-outline-variant p-gutter rounded-xl shadow-sm flex items-center justify-between">
+                    <div>
+                        <p class="text-label-sm text-on-surface-variant uppercase tracking-wider mb-1">Latence Moyenne</p>
+                        <h3 id="metricLatency" class="text-headline-lg font-headline-lg text-tertiary">—</h3>
+                    </div>
+                    <div class="w-12 h-12 rounded-full bg-tertiary-container/20 flex items-center justify-center">
+                        <span class="material-symbols-outlined text-tertiary">timer</span>
+                    </div>
+                </div>
+            </section>
+            <div class="flex items-center justify-between px-2 mt-2">
+                <p id="evalSubtitle" class="text-label-sm text-on-surface-variant italic">Cliquez « Relancer l'éval » pour mesurer sur 12 questions gold (mode courant)</p>
+                <button id="evalBtn" class="flex items-center gap-1 px-3 py-1 rounded-lg border border-outline-variant text-label-sm text-on-surface-variant hover:bg-surface-container-high transition-colors">
+                    <span class="material-symbols-outlined text-[16px]">refresh</span>Relancer l'éval
+                </button>
+            </div>
+
+            <!-- Search Area -->
+            <section class="bg-white p-gutter rounded-xl border border-outline-variant shadow-sm flex flex-col gap-6">
+                <div class="flex flex-col gap-2">
+                    <label class="text-label-md font-label-md text-on-surface">Requête utilisateur (Query)</label>
+                    <div class="relative">
+                        <input id="queryInput" type="text" value="What transparency obligations apply to AI systems that interact with people?" class="w-full pl-4 pr-12 py-4 bg-surface-container-low border-none rounded-xl text-body-lg font-body-lg focus:ring-2 focus:ring-primary shadow-inner">
+                        <button id="searchBtn" class="absolute right-3 top-3 bg-primary text-on-primary w-10 h-10 rounded-lg flex items-center justify-center hover:opacity-90 transition-opacity">
+                            <span class="material-symbols-outlined">play_arrow</span>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="flex flex-wrap items-center justify-between gap-gutter">
+                    <div class="flex flex-col gap-2">
+                        <span class="text-label-sm font-label-sm text-on-surface-variant uppercase">Juridiction</span>
+                        <div id="jurisdictionGroup" class="flex gap-2">
+                            <button data-jurisdiction="all" class="px-4 py-1.5 rounded-full bg-primary text-on-primary text-label-md">Toutes</button>
+                            <button data-jurisdiction="EU" class="px-4 py-1.5 rounded-full bg-surface-container-high text-on-surface-variant hover:bg-outline-variant transition-colors text-label-md">EU</button>
+                            <button data-jurisdiction="US" class="px-4 py-1.5 rounded-full bg-surface-container-high text-on-surface-variant hover:bg-outline-variant transition-colors text-label-md">US</button>
+                            <button data-jurisdiction="UK" class="px-4 py-1.5 rounded-full bg-surface-container-high text-on-surface-variant hover:bg-outline-variant transition-colors text-label-md">UK</button>
+                        </div>
+                        <div class="flex items-center gap-2 ml-4 border-l border-outline-variant/30 pl-4">
+                            <span class="text-label-sm font-label-sm text-on-surface-variant uppercase">Top-K</span>
+                            <div class="flex items-center bg-surface-container-low rounded-lg px-2 py-1 gap-3">
+                                <button id="topKMinus" class="text-primary hover:opacity-70"><span class="material-symbols-outlined text-[18px]">remove</span></button>
+                                <span id="topKValue" class="text-label-md font-bold w-4 text-center">10</span>
+                                <button id="topKPlus" class="text-primary hover:opacity-70"><span class="material-symbols-outlined text-[18px]">add</span></button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="flex flex-col gap-2">
+                        <span class="text-label-sm font-label-sm text-on-surface-variant uppercase text-right">Moteur de recherche</span>
+                        <div id="modeGroup" class="bg-surface-container-low p-1 rounded-lg flex gap-1">
+                            <button data-mode="baseline" class="px-6 py-1.5 rounded-md text-label-md text-on-surface-variant hover:bg-surface-container-high transition-all">Baseline</button>
+                            <button data-mode="hybrid" class="px-6 py-1.5 rounded-md text-label-md text-on-surface-variant hover:bg-surface-container-high transition-all">Hybride</button>
+                            <button data-mode="full" class="px-6 py-1.5 rounded-md text-label-md bg-white shadow-sm text-primary font-bold">Complet</button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Results List -->
+            <section class="flex flex-col gap-4">
+                <div class="flex items-center justify-between px-2">
+                    <h2 id="resultsHeading" class="text-headline-md font-headline-md text-primary">Résultats</h2>
+                    <span id="latencyLabel" class="text-label-md text-on-surface-variant"></span>
+                </div>
+                <div id="resultsContainer" class="flex flex-col gap-4"></div>
+            </section>
+        </div>
+    </main>
+
+    <script>
+        const state = { jurisdiction: "all", mode: "full", topK: 10 };
+
+        function escapeHtml(str) {
+            const d = document.createElement("div");
+            d.textContent = str || "";
+            return d.innerHTML;
+        }
+
+        function statusBadgeClasses(status) {
+            const s = (status || "").toLowerCase();
+            if (s.includes("obligatoire")) return "bg-primary-container text-on-primary-container";
+            if (s.includes("recommand")) return "bg-secondary-container text-on-secondary-container";
+            if (s.includes("volontaire")) return "bg-surface-container-high text-on-surface-variant";
+            return "bg-surface-container-high text-on-surface-variant";
+        }
+
+        function methodTagClasses(method) {
+            const m = (method || "").toLowerCase();
+            if (m.includes("fallback-demo")) return "text-on-tertiary-fixed-variant bg-tertiary-fixed/50";
+            return "text-outline bg-surface-container-high";
+        }
+
+        function resultCardHtml(item) {
+            const tagChip = item.tag
+                ? `<span class="bg-tertiary-fixed text-on-tertiary-fixed-variant px-3 py-0.5 rounded-md text-label-sm font-label-sm">${escapeHtml(item.tag)}</span>`
+                : "";
+            return `
+            <div class="bg-white rounded-xl border border-outline-variant p-gutter shadow-sm flex flex-col gap-4 hover:border-primary/40 transition-colors">
+                <div class="flex items-start justify-between">
+                    <div class="flex gap-4">
+                        <div class="flex flex-col items-center justify-center bg-surface-container-low rounded-lg p-3 min-w-[70px]">
+                            <span class="text-label-sm text-on-surface-variant">RANK</span>
+                            <span class="text-headline-md text-primary">#${item.rank}</span>
+                            <span class="text-label-sm text-secondary mt-1">${item.score}</span>
+                        </div>
+                        <div class="flex flex-col gap-1">
+                            <h4 class="text-body-lg font-bold text-on-surface">${escapeHtml(item.title)}</h4>
+                            <div class="flex gap-2 items-center flex-wrap">
+                                ${tagChip}
+                                <span class="bg-primary-fixed text-on-primary-fixed-variant px-3 py-0.5 rounded-md text-label-sm font-label-sm flex items-center gap-1">
+                                    <span class="material-symbols-outlined text-[14px]">public</span> ${escapeHtml(item.jurisdiction)}
+                                </span>
+                                <span class="${statusBadgeClasses(item.status)} px-3 py-0.5 rounded-md text-label-sm font-label-sm">${escapeHtml(item.status)}</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="bg-surface-container-lowest p-4 rounded-lg border-l-4 border-primary/30">
+                    <p class="text-body-md text-on-surface-variant leading-relaxed italic">"...${escapeHtml(item.text)}..."</p>
+                </div>
+                <div class="mt-2 flex">
+                    <span class="text-[12px] ${methodTagClasses(item.method)} px-2 py-0.5 rounded">${escapeHtml(item.method)}</span>
+                </div>
+                <div class="flex justify-between items-center pt-2 border-t border-outline-variant/30">
+                    <button class="flex items-center gap-2 text-label-md text-primary hover:underline group" onclick="this.nextElementSibling.classList.toggle('hidden')">
+                        <span class="material-symbols-outlined text-[18px] group-hover:translate-y-0.5 transition-transform">expand_more</span>
+                        Voir le contexte parent
+                    </button>
+                </div>
+                <div class="hidden mt-2 p-4 bg-surface-container-low rounded-lg text-label-md text-on-surface-variant">${escapeHtml(item.context) || "(pas de contexte parent disponible)"}</div>
+            </div>`;
+        }
+
+        function renderResults(items) {
+            const container = document.getElementById("resultsContainer");
+            if (!items.length) {
+                container.innerHTML = `<p class="text-label-md text-on-surface-variant italic px-2">Aucun résultat pour cette combinaison requête / juridiction.</p>`;
+                return;
+            }
+            container.innerHTML = items.map(resultCardHtml).join("");
+            // Surface which mode actually served the results (index vs fallback-demo)
+            const usedFallback = items.some(i => (i.method || "").includes("fallback-demo"));
+            const badge = document.getElementById("indexModeBadge");
+            badge.textContent = usedFallback ? "index: fallback-demo" : "index: réel";
+            badge.className = "text-label-sm px-3 py-1 rounded-full " +
+                (usedFallback ? "bg-tertiary-fixed/50 text-on-tertiary-fixed-variant" : "bg-primary-container/30 text-primary");
+        }
+
+        async function runSearch() {
+            const query = document.getElementById("queryInput").value.trim();
+            if (!query) return;
+            const btn = document.getElementById("searchBtn");
+            btn.disabled = true;
+            document.getElementById("resultsHeading").textContent = "Recherche en cours…";
+            try {
+                const res = await fetch("/api/search", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ query, jurisdiction: state.jurisdiction, mode: state.mode, top_k: state.topK }),
+                });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error || "Erreur inconnue");
+                renderResults(data.results);
+                document.getElementById("resultsHeading").textContent = `Top ${data.results.length} Résultats`;
+                document.getElementById("latencyLabel").textContent = `Recherche effectuée en ${data.latency_ms}ms`;
+            } catch (err) {
+                document.getElementById("resultsContainer").innerHTML =
+                    `<p class="text-label-md text-error px-2">Erreur : ${escapeHtml(err.message)}</p>`;
+                document.getElementById("resultsHeading").textContent = "Résultats";
+            } finally {
+                btn.disabled = false;
+            }
+        }
+
+        async function runEval() {
+            const btn = document.getElementById("evalBtn");
+            const subtitle = document.getElementById("evalSubtitle");
+            btn.disabled = true;
+            subtitle.textContent = "Calcul en cours (peut prendre ~20s au premier appel — chargement des modèles)…";
+            try {
+                const res = await fetch(`/api/eval?mode=${encodeURIComponent(state.mode)}`);
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error || "Erreur inconnue");
+                document.getElementById("metricHitRate").textContent = data.hit_at_3.toFixed(2);
+                document.getElementById("metricMRR").textContent = data.mrr.toFixed(2);
+                document.getElementById("metricLatency").textContent = `${data.avg_latency_ms}ms`;
+                subtitle.textContent = `Moyenne sur ${data.n_questions} questions gold — mode: ${data.mode} — voir tests/eval_retrieval.py`;
+            } catch (err) {
+                subtitle.textContent = `Erreur d'évaluation : ${err.message}`;
+            } finally {
+                btn.disabled = false;
+            }
+        }
+
+        document.getElementById("searchBtn").addEventListener("click", runSearch);
+        document.getElementById("queryInput").addEventListener("keydown", (e) => {
+            if (e.key === "Enter") runSearch();
+        });
+        document.getElementById("evalBtn").addEventListener("click", runEval);
+
+        document.getElementById("jurisdictionGroup").querySelectorAll("button").forEach(btn => {
+            btn.addEventListener("click", function () {
+                this.parentElement.querySelectorAll("button").forEach(b => {
+                    b.classList.remove("bg-primary", "text-on-primary");
+                    b.classList.add("bg-surface-container-high", "text-on-surface-variant");
+                });
+                this.classList.remove("bg-surface-container-high", "text-on-surface-variant");
+                this.classList.add("bg-primary", "text-on-primary");
+                state.jurisdiction = this.dataset.jurisdiction;
+            });
+        });
+
+        document.getElementById("modeGroup").querySelectorAll("button").forEach(btn => {
+            btn.addEventListener("click", function () {
+                this.parentElement.querySelectorAll("button").forEach(b => {
+                    b.classList.remove("bg-white", "shadow-sm", "text-primary", "font-bold");
+                    b.classList.add("text-on-surface-variant");
+                });
+                this.classList.remove("text-on-surface-variant");
+                this.classList.add("bg-white", "shadow-sm", "text-primary", "font-bold");
+                state.mode = this.dataset.mode;
+            });
+        });
+
+        document.getElementById("topKMinus").addEventListener("click", () => {
+            state.topK = Math.max(1, state.topK - 1);
+            document.getElementById("topKValue").textContent = state.topK;
+        });
+        document.getElementById("topKPlus").addEventListener("click", () => {
+            state.topK = Math.min(20, state.topK + 1);
+            document.getElementById("topKValue").textContent = state.topK;
+        });
+
+        // Run an initial search on load so the page isn't empty
+        window.addEventListener("DOMContentLoaded", runSearch);
+    </script>
+</body></html>
