@@ -1,8 +1,22 @@
-# Agent IA de gouvernance et conformité AI Act
+# Agent IA de gouvernance et conformité IA (UE / US / UK)
 
-Agent de recherche et d'analyse destiné à aider une équipe conformité à évaluer rapidement le niveau de risque d'un cas d'usage IA au regard de l'AI Act européen.
+Agent de recherche et d'analyse destiné à aider une équipe conformité à évaluer rapidement le niveau de risque d'un cas d'usage IA, et à comparer le traitement réglementaire de ce cas d'usage entre trois juridictions : **Union européenne** (AI Act), **États-Unis** (cadre fédéral volontaire + loi d'État), **Royaume-Uni** (principes non contraignants + régulateurs sectoriels).
 
 Le projet est structuré pour le devoir PGE5 : recherche hybride, garde-fous, raisonnement structuré, serveur MCP, agent critique, observabilité et tests de sécurité.
+
+## Juridictions couvertes
+
+| Juridiction | Nature | Classification | Corpus |
+|---|---|---|---|
+| **Union européenne** (principale) | Réglementation horizontale **obligatoire** | Niveaux de risque (interdit / haut / limité / minimal) | `data/ai_act_corpus/`, `data/gdpr_corpus/` |
+| **États-Unis** | Cadre principalement **volontaire** et sectoriel, sauf exception d'État | Gestion des risques (Govern/Map/Measure/Manage) | `data/us_ai_regulation_corpus/` |
+| **Royaume-Uni** | Approche par **principes non contraignants** + régulateurs existants | Contextuelle et sectorielle | `data/uk_ai_regulation_corpus/` |
+
+Détail des documents et de leur statut (obligatoire / volontaire / recommandation) dans le `README.md` de chaque sous-dossier de `data/`.
+
+> **Règle de conception impérative** : l'agent ne doit jamais présenter une comparaison entre juridictions comme une vérité juridique universelle. Chaque affirmation produite doit préciser sa source, sa date et son statut (obligatoire, volontaire, projet ou recommandation) — voir `src/reasoning.py`.
+
+> **Note d'état actuel** : le socle de recherche (`src/retrieval.py`) lit aujourd'hui les fichiers `.md`/`.txt` de `data/`. Les corpus PDF ci-dessus sont téléchargés mais **pas encore extraits/ingérés** — l'extraction PDF → texte et le chunking parent-enfant sur ce corpus réel sont la prochaine étape du pipeline.
 
 ## Installation
 
