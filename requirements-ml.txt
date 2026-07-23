@@ -1,0 +1,8 @@
+# Optional ingestion and local vector-index dependencies.
+# Install after requirements.txt only when building index_data locally.
+-r requirements.txt
+
+pymupdf>=1.24.0
+numpy>=1.26.0
+rank_bm25>=0.2.2
+sentence-transformers>=3.0.0

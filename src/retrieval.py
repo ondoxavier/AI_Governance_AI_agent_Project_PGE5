@@ -92,18 +92,23 @@ class _IndexRetriever:
     def __init__(self):
         import numpy as np
         from rank_bm25 import BM25Okapi
-        from sentence_transformers import SentenceTransformer
-
         self.np = np
         self.chunks: list[dict] = json.loads(
             (INDEX_DIR / "chunks.json").read_text(encoding="utf-8"))
         self.embeddings = np.load(INDEX_DIR / "embeddings.npy")  # (N, d) L2-normalised
         self.bm25 = BM25Okapi([tokenize(c["text"]) for c in self.chunks])
-        self.embedder = SentenceTransformer(EMBED_MODEL)
+        meta_path = INDEX_DIR / "index_meta.json"
+        meta = json.loads(meta_path.read_text(encoding="utf-8")) if meta_path.exists() else {}
+        self.embedding_backend = meta.get("embedding_backend", "transformer")
+        if self.embedding_backend == "hash":
+            self.embedder = None
+        else:
+            from sentence_transformers import SentenceTransformer
+            self.embedder = SentenceTransformer(EMBED_MODEL)
 
         try:
             from sentence_transformers import CrossEncoder
-            self.reranker = CrossEncoder(RERANK_MODEL)
+            self.reranker = CrossEncoder(RERANK_MODEL) if self.embedding_backend == "transformer" else None
         except Exception:
             self.reranker = None  # rerank falls back to fused order
 
@@ -139,7 +144,10 @@ class _IndexRetriever:
             return []
 
         # Dense ranking: cosine = dot product (embeddings are L2-normalised)
-        q = self.embedder.encode([query], convert_to_numpy=True, normalize_embeddings=True)[0]
+        if self.embedding_backend == "hash":
+            q = np.asarray(dense_vector(query, dimensions=self.embeddings.shape[1]), dtype="float32")
+        else:
+            q = self.embedder.encode([query], convert_to_numpy=True, normalize_embeddings=True)[0]
         sims = self.embeddings @ q
         dense_rank = sorted(ids, key=lambda i: float(sims[i]), reverse=True)[:INITIAL_TOP_K]
 

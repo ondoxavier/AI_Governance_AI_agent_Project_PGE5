@@ -1,0 +1,4 @@
+const nodes = ["Utilisateur", "Interface React", "FastAPI", "Garde-fou L1", "Contrôle L4", "Retrieval / MCP", "Self-Consistency k=3", "Critique", "AgentResponse", "Langfuse ou LocalTracer"];
+export default function Architecture() {
+  return <div className="space-y-5"><header><h1 className="text-3xl font-semibold">Architecture réelle</h1><p className="muted">FastAPI adapte les composants Python existants ; il ne remplace ni la CLI ni MCP.</p></header><div className="panel p-6 overflow-x-auto"><ol className="flex min-w-max items-center" aria-label="Flux de traitement">{nodes.map((node, i) => <li key={node} className="flex items-center"><details className="bg-[var(--raised)] border border-[var(--border)] rounded-lg p-3 w-40"><summary className="font-semibold">{node}</summary><p className="muted text-xs mt-2">Étape présente dans le pipeline exécuté.</p></details>{i < nodes.length - 1 && <span className="mx-2 muted" aria-hidden>→</span>}</li>)}</ol></div></div>;
+}

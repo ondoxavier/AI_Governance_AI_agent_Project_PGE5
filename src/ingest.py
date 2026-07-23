@@ -16,7 +16,9 @@ git-ignored; run this script once after cloning to enable the full RAG.
 from __future__ import annotations
 
 import argparse
+from hashlib import blake2b
 import json
+from math import sqrt
 import re
 import sys
 import unicodedata
@@ -260,37 +262,42 @@ def build_chunks() -> list[dict]:
                         "parent_text": parent_text,
                     })
 
-    # Also index loose .md knowledge files at the top of data/ (e.g. ai_act_reference.md)
-    for md in sorted(DATA_DIR.glob("*.md")):
-        if md.name.casefold() == "readme.md":
-            continue
-        text = _clean(md.read_text(encoding="utf-8"))
-        for i, child in enumerate(split_words(text, CHILD_CHUNK_WORDS, CHILD_OVERLAP_WORDS)):
-            chunks.append({
-                "chunk_id": f"{md.stem}#0.{i}", "doc_id": md.stem, "corpus": "data",
-                "jurisdiction": "EU", "status": "resume non officiel",
-                "date": UNKNOWN_DATE,
-                "chapter": "", "article": "", "text": child, "parent_text": text[:PARENT_MAX_CHARS],
-            })
     return chunks
 
 
 # ── Step 3: embeddings ────────────────────────────────────────────────────────
 
-def embed_chunks(chunks: list[dict]):
-    import numpy as np
-    from sentence_transformers import SentenceTransformer
+def _hash_vector(text: str, dimensions: int = 384) -> list[float]:
+    vector = [0.0] * dimensions
+    for token in re.findall(r"[a-zA-ZÀ-ÿ0-9_]+", text.casefold()):
+        digest = blake2b(token.encode("utf-8"), digest_size=4).digest()
+        vector[int.from_bytes(digest, "big") % dimensions] += 1.0
+    norm = sqrt(sum(value * value for value in vector)) or 1.0
+    return [value / norm for value in vector]
 
-    model = SentenceTransformer(EMBED_MODEL)
+
+def embed_chunks(chunks: list[dict], backend: str):
+    import numpy as np
     texts = [c["text"] for c in chunks]
-    emb = model.encode(texts, batch_size=64, show_progress_bar=True,
-                       convert_to_numpy=True, normalize_embeddings=True)
+    if backend == "hash":
+        emb = np.asarray([_hash_vector(text) for text in texts], dtype="float32")
+    else:
+        from sentence_transformers import SentenceTransformer
+        model = SentenceTransformer(EMBED_MODEL)
+        emb = model.encode(texts, batch_size=64, show_progress_bar=True,
+                           convert_to_numpy=True, normalize_embeddings=True)
     return emb.astype("float32")
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--force", action="store_true", help="re-extract PDFs and rebuild the index")
+    parser.add_argument(
+        "--embedding-backend",
+        choices=("hash", "transformer"),
+        default="hash",
+        help="hash is autonomous; transformer downloads the configured SentenceTransformer model",
+    )
     args = parser.parse_args()
 
     print("=== Step 1/3 — PDF extraction ===")
@@ -308,13 +315,17 @@ def main() -> int:
     print(f"{len(chunks)} child chunks ({', '.join(f'{k}: {v}' for k, v in sorted(by_jur.items()))})\n")
 
     print("=== Step 3/3 — Embeddings ===")
-    embeddings = embed_chunks(chunks)
+    embeddings = embed_chunks(chunks, args.embedding_backend)
 
     INDEX_DIR.mkdir(exist_ok=True)
     import numpy as np
     np.save(INDEX_DIR / "embeddings.npy", embeddings)
     (INDEX_DIR / "chunks.json").write_text(
         json.dumps(chunks, ensure_ascii=False), encoding="utf-8")
+    (INDEX_DIR / "index_meta.json").write_text(
+        json.dumps({"embedding_backend": args.embedding_backend, "model": EMBED_MODEL if args.embedding_backend == "transformer" else None}),
+        encoding="utf-8",
+    )
     print(f"\nIndex written: {INDEX_DIR}/embeddings.npy "
           f"({embeddings.shape[0]} x {embeddings.shape[1]}) + chunks.json")
     return 0

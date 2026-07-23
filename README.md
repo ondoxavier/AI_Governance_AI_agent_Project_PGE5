@@ -172,6 +172,57 @@ Observabilite : si `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY` et
 eventuellement `LANGFUSE_HOST` sont definis, les spans sont envoyes a Langfuse.
 Sinon, le fallback local imprime les spans `[span:start]` / `[span:end]`.
 
+## Interface web
+
+RegulaAI ajoute une interface React responsive au-dessus du code Python
+existant. La CLI et le serveur MCP restent disponibles.
+
+```bash
+python -m uvicorn src.web_api:app --reload --port 8000
+
+cd frontend
+npm install
+npm run dev
+```
+
+Vérifications :
+
+```bash
+python -m pytest -q
+cd frontend
+npm run lint
+npm run typecheck
+npm run test -- --run
+npm run build
+```
+
+Vite relaie `/api` vers `http://127.0.0.1:8000`. Aucune clé n’est exposée au
+navigateur. Voir `docs/frontend-architecture.md`.
+
+### Deploiement Vercel
+
+Le depot contient un point d'entree ASGI dans `api/index.py` et un
+`vercel.json` qui construit l'interface Vite, publie `frontend/dist`, achemine
+`/api/*` vers FastAPI et renvoie les autres routes vers la SPA.
+
+1. Importer ce depot dans Vercel en conservant la racine du depot comme
+   `Root Directory`.
+2. Conserver la commande de build et le dossier de sortie de `vercel.json`.
+3. Ajouter `DEEPINFRA_API_KEY` dans les variables d'environnement Vercel.
+4. Ajouter facultativement les variables `LANGFUSE_*` et `AGENT_VERSION`.
+5. Deployer, puis verifier `/api/v1/health`.
+
+Les analyses web sont executees dans la requete HTTP, puis conservees dans la
+session du navigateur. Elles ne dependent donc pas d'un thread d'arriere-plan
+ou de la memoire d'une instance serverless. Les dependances ML lourdes ne sont
+pas installees sur Vercel : le retrieval web utilise le mode fallback leger.
+Pour construire l'index vectoriel localement :
+
+```bash
+python -m pip install -r requirements-ml.txt
+python src/ingest.py
+```
+
 ## Variables d'environnement
 
 Voir `.env.example`. Les clés sont optionnelles pour l'exécution locale de démonstration, mais nécessaires pour une version connectée à un LLM et à Langfuse.
