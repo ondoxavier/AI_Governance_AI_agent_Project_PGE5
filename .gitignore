@@ -42,7 +42,6 @@ out.txt
 err.txt
 
 # Generated ingestion artifacts (regenerable via python src/ingest.py)
-index_data/
 processed_txt/
 *.faiss
 *.hnsw
@@ -50,3 +49,5 @@ embeddings_cache/
 
 # Notebooks
 .ipynb_checkpoints/
+
+node_modules/
