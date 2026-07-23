@@ -16,7 +16,40 @@ Détail des documents et de leur statut (obligatoire / volontaire / recommandati
 
 > **Règle de conception impérative** : l'agent ne doit jamais présenter une comparaison entre juridictions comme une vérité juridique universelle. Chaque affirmation produite doit préciser sa source, sa date et son statut (obligatoire, volontaire, projet ou recommandation) — voir `src/reasoning.py`.
 
-> **État actuel** : le pipeline d'ingestion (`src/ingest.py`) extrait les PDF des 3 juridictions et construit l'index hybride (~3 000 chunks parent-enfant). `src/retrieval.py` interroge cet index (BM25 + dense + RRF + cross-encoder) avec filtre par juridiction, et bascule automatiquement sur un petit corpus de démonstration si l'index n'a pas encore été construit.
+> **État actuel** : le pipeline d'ingestion (`src/ingest.py`) extrait les PDF des 3 juridictions et construit l'index hybride (2 967 chunks parent-enfant). L'index commité utilise le backend `hash` (léger, sans cross-encoder) ; reconstruire en backend `transformer` pour le retrieval hybride complet (BM25 + dense + RRF + cross-encoder), voir [Pipeline RAG](#pipeline-rag). `src/retrieval.py` filtre par juridiction et bascule automatiquement sur un petit corpus de démonstration si aucun index n'a été construit.
+
+## Pipeline RAG
+
+### Structuration du corpus
+
+43 PDF sources officielles, répartis en 4 dossiers sous `data/` (un `README.md` par dossier détaille chaque document, sa source et son statut) :
+
+| Dossier | Juridiction | PDF | Chunks indexés |
+|---|---|---|---|
+| `ai_act_corpus/` | UE | 16 | 1 491 (EU, avec `gdpr_corpus/`) |
+| `gdpr_corpus/` | UE | 17 | ↑ |
+| `us_ai_regulation_corpus/` | US | 8 | 968 |
+| `uk_ai_regulation_corpus/` | UK | 2 | 508 |
+| **Total** | | **43** | **2 967** |
+
+### Ingestion (`src/ingest.py`)
+
+1. **Extraction PDF → texte** (`extract_pdf_text`), avec cache dans `processed_txt/` — relance idempotente, ne ré-extrait que les PDF modifiés.
+2. **Découpe juridique parent/enfant** (`split_into_legal_blocks` + `build_chunks`) : le texte est d'abord segmenté selon sa structure légale réelle (Article / Chapitre / Considérant détectés par regex), pas par une fenêtre de mots aveugle. Chaque bloc juridique devient un **parent** (jusqu'à `PARENT_MAX_CHARS = 4000` caractères, conservé tel quel dans `document.context`), puis re-découpé en **enfants** de `CHILD_CHUNK_WORDS = 180` mots avec chevauchement de `CHILD_OVERLAP_WORDS = 30` mots — ce sont les enfants qui sont indexés et matchés, mais le parent complet est renvoyé au LLM pour un contexte plus riche. Les documents sans structure détectable retombent sur un découpage par fenêtre de mots.
+3. **Embeddings** — deux backends au choix via `--embedding-backend` :
+   - `hash` (**défaut**, `python src/ingest.py`) : vecteur de hachage de tokens (blake2b), autonome, aucune dépendance ML lourde. C'est le backend utilisé pour l'index **actuellement commité** dans `index_data/` (`chunks.json`, `embeddings.npy`, `index_meta.json`) — pensé pour Vercel (voir plus bas), pas des embeddings sémantiques.
+   - `transformer` (`python src/ingest.py --embedding-backend transformer`, nécessite `requirements-ml.txt`) : vrais embeddings `sentence-transformers/all-MiniLM-L6-v2` (configurable via `EMBED_MODEL`). **C'est ce backend qu'il faut reconstruire localement pour le retrieval hybride complet** (voir ci-dessous) — `index_meta.json` enregistre le backend utilisé, et `retrieval.py` désactive automatiquement le cross-encoder si l'index a été construit en `hash`.
+
+### Retrieval hybride (`src/retrieval.py`)
+
+Mode `full` (production, nécessite un index `transformer`) — combine 3 techniques :
+1. **BM25** (`rank_bm25`) et **dense** (cosinus sur les embeddings ci-dessus) récupèrent chacun `INITIAL_TOP_K = 24` candidats, filtrés par juridiction si demandé.
+2. **RRF** (Reciprocal Rank Fusion, `1 / (60 + rang)`) fusionne les deux classements en un seul, sans avoir à normaliser des scores hétérogènes entre BM25 et cosinus.
+3. **Cross-encoder reranking** (`cross-encoder/ms-marco-MiniLM-L-6-v2` par défaut, configurable via `RERANK_MODEL`) réordonne le pool fusionné en mélangeant son propre score (60 %) avec la position RRF d'origine (40 %), pour amortir un score de cross-encoder ponctuellement aberrant. **Désactivé si l'index est en backend `hash`** (BM25 + dense + RRF fonctionnent quand même, sans reranking).
+
+Mode `baseline` (pour le tableau RAGAS avant/après, voir `evaluate.py`) : dense seul, sans RRF ni reranking — sert de point de comparaison pour mesurer l'apport réel de chaque technique.
+
+Mode `fallback` (offline demo, sans index construit) : BM25 pur-Python + vecteurs hashés sur un petit corpus embarqué, méthode marquée `fallback-demo` dans les résultats — permet à `python src/agent.py` de tourner depuis un clone vierge sans dépendances ML ni construction d'index préalable.
 
 ## Installation
 
@@ -47,11 +80,14 @@ Si l'exécution de scripts PowerShell est bloquée, utilisez directement le Pyth
 
 ## Construire l'index RAG (une fois après le clone)
 
+Un index (backend `hash`, léger) est déjà commité dans `index_data/`. Pour le retrieval hybride complet (dense + cross-encoder), reconstruire avec le backend `transformer` :
+
 ```bash
-python src/ingest.py
+python -m pip install -r requirements-ml.txt
+python src/ingest.py --embedding-backend transformer
 ```
 
-Ce script : (1) extrait le texte des PDF de `data/*/` vers `processed_txt/` (avec cache — relance rapide), (2) découpe selon la structure juridique (Article/Chapitre/Considérant) en chunks parent-enfant, (3) calcule les embeddings (`all-MiniLM-L6-v2`) et écrit l'index dans `index_data/` (git-ignoré, régénérable).
+Détail du pipeline (extraction, découpe parent-enfant, embeddings, différence `hash` / `transformer`) : voir [Pipeline RAG](#pipeline-rag) ci-dessus.
 
 Sans cet index, l'agent fonctionne quand même en **mode dégradé** (petit corpus de démonstration intégré, méthode marquée `fallback-demo` dans les résultats) — utile pour vérifier l'installation, insuffisant pour de vraies réponses.
 
@@ -107,8 +143,8 @@ Utilisateur
    v
 src/agent.py
    |-- guardrails.py  : filtrage L1, contrôle d'action L4, TokenBudget
-   |-- retrieval.py   : BM25 + embeddings locaux + RRF + reranking
-   |-- reasoning.py   : synthèse PREUVES / ANALYSE / CONCLUSION / CONFIANCE + self-consistency k=3
+   |-- retrieval.py   : BM25 + dense + RRF + cross-encoder (voir Pipeline RAG)
+   |-- reasoning.py   : PREUVES / ARTICLES / CONCLUSION / OBLIGATIONS / COMPARAISON EU-US-UK / CONFIANCE + self-consistency k=3
    |-- mcp_server.py  : outils MCP exposés
    |
    v
@@ -215,12 +251,13 @@ Le depot contient un point d'entree ASGI dans `api/index.py` et un
 Les analyses web sont executees dans la requete HTTP, puis conservees dans la
 session du navigateur. Elles ne dependent donc pas d'un thread d'arriere-plan
 ou de la memoire d'une instance serverless. Les dependances ML lourdes ne sont
-pas installees sur Vercel : le retrieval web utilise le mode fallback leger.
-Pour construire l'index vectoriel localement :
+pas installees sur Vercel : le retrieval web utilise l'index `hash` commité
+(voir [Pipeline RAG](#pipeline-rag)). Pour construire l'index vectoriel complet
+localement :
 
 ```bash
 python -m pip install -r requirements-ml.txt
-python src/ingest.py
+python src/ingest.py --embedding-backend transformer
 ```
 
 ## Variables d'environnement
