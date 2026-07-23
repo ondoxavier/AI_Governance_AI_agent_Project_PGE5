@@ -20,9 +20,22 @@ export interface Health {
   retrieval: { index_available: boolean; fallback_mode: boolean };
   mcp: { available: boolean; tools_count: number };
 }
+export interface JurisdictionComparisonBlock {
+  jurisdiction: string;
+  status: string;
+  statement: string;
+}
 export interface AnalysisResult {
   answer: string;
-  sections: { evidence: string[]; analysis: string; conclusion: string; confidence: string };
+  sections: {
+    evidence: string[];
+    analysis: string;
+    conclusion: string;
+    confidence: string;
+    relevant_articles: string[];
+    obligations: string[];
+    jurisdiction_comparison: JurisdictionComparisonBlock[];
+  };
   conclusion: string | null;
   confidence: number | null;
   critic_verdict: CriticVerdict;

@@ -5,13 +5,15 @@ from __future__ import annotations
 from collections import Counter
 from dataclasses import dataclass, field
 from enum import Enum
+import hashlib
 import re
 import unicodedata
 from typing import Any
 
+import guardrails
 import llm_client
 from constants import UNKNOWN_DATE
-from retrieval import SearchResult
+from retrieval import SearchResult, hybrid_search
 
 
 def _strip_accents(text: str) -> str:
@@ -104,6 +106,68 @@ class ReasonedAnswer:
     input_fields: dict[str, str] = field(default_factory=dict)
     missing_information: list[str] = field(default_factory=list)
     candidate_conclusions: list[str] = field(default_factory=list)
+    # Cahier des charges §1.1 output contract, elements #3, #4, #6:
+    relevant_articles: list[str] = field(default_factory=list)
+    obligations: list[str] = field(default_factory=list)
+    jurisdiction_comparison: list[dict[str, str]] = field(default_factory=list)
+
+
+# Element #4 (obligations applicables) — one short bullet list per risk level,
+# conditioned on the risk level only (role/deployeur-fournisseur is out of
+# scope for now, see conversation). Expands the single-sentence obligation
+# used before into the multi-item list the cahier des charges' own reference
+# example expects.
+OBLIGATIONS_BY_RISK: dict[str, list[str]] = {
+    "interdit": [
+        "cesser ou refuser le cas d'usage",
+        "documenter le motif d'interdiction (Article 5)",
+        "ne pas commercialiser ni deployer le systeme concerne",
+    ],
+    "élevé": [
+        "mettre en place un systeme de gestion des risques (Article 9)",
+        "assurer la gouvernance et la qualite des donnees d'entrainement (Article 10)",
+        "constituer une documentation technique complete (Article 11)",
+        "garantir une supervision humaine effective (Article 14)",
+        "informer les travailleurs ou leurs representants concernes",
+    ],
+    "limité": [
+        "informer clairement l'utilisateur qu'il interagit avec un systeme d'IA (Article 50)",
+        "documenter et tracer les limites fonctionnelles du systeme",
+    ],
+    "minimal": [
+        "appliquer les bonnes pratiques de gouvernance et de surveillance",
+        "conserver une veille reglementaire en cas d'evolution du cas d'usage",
+    ],
+}
+
+# Element #3 (articles et annexes pertinents) — pulled from the retrieved
+# evidence itself (titles + text), never invented: matches "Article 12",
+# "Article 9.2", "Annexe III", "Annexe III point 4", case-insensitively.
+_ARTICLE_PATTERN = re.compile(
+    r"\b(article\s+\d+[a-z]?(?:[.\s]\d+)?|annexe\s+[ivxlc]+(?:\s+(?:point|§)\s*\d+)?)\b",
+    re.IGNORECASE,
+)
+
+
+def extract_relevant_articles(contexts: list[SearchResult], limit: int = 6) -> list[str]:
+    """Deterministically pull article/annex citations out of retrieved evidence.
+
+    Grounded in the actual retrieved text (never the LLM's own claim), so this
+    is safe to compute for both the deterministic and LLM-backed paths.
+    """
+    found: list[str] = []
+    seen: set[str] = set()
+    for result in contexts:
+        haystack = f"{result.document.title} {result.document.text}"
+        for match in _ARTICLE_PATTERN.finditer(haystack):
+            normalized = re.sub(r"\s+", " ", match.group(1)).strip()
+            key = normalized.casefold()
+            if key not in seen:
+                seen.add(key)
+                found.append(normalized)
+            if len(found) >= limit:
+                return found
+    return found
 
 
 def classify_ai_act_risk(question: str, contexts: list[SearchResult]) -> str:
@@ -161,12 +225,6 @@ def synthesize_once(question: str, contexts: list[SearchResult], variant: int = 
         )
         for result in contexts[:3]
     ]
-    obligations = {
-        "interdit": "cesser ou refuser le cas d'usage, puis documenter le motif d'interdiction",
-        "élevé": "mettre en place gestion des risques, documentation, traçabilité et supervision humaine",
-        "limité": "informer clairement l'utilisateur et tracer les limites du système",
-        "minimal": "appliquer des bonnes pratiques de gouvernance et de surveillance",
-    }
     input_fields = extract_input_fields(question)
     missing_information = missing_information_from_fields(input_fields)
     analysis = (
@@ -174,7 +232,7 @@ def synthesize_once(question: str, contexts: list[SearchResult], variant: int = 
         f"mentionnent les critères réglementaires associés. Variante de synthèse {variant + 1}. "
         "Extraction des champs en mode déterministe: les champs absents sont signalés."
     )
-    conclusion = f"Niveau de risque probable: {risk}. Obligation principale: {obligations[risk]}."
+    conclusion = f"Niveau de risque probable: {risk}."
     return ReasonedAnswer(
         evidence=evidence,
         analysis=analysis,
@@ -188,7 +246,48 @@ def synthesize_once(question: str, contexts: list[SearchResult], variant: int = 
         input_fields=input_fields,
         missing_information=missing_information,
         candidate_conclusions=[conclusion],
+        relevant_articles=extract_relevant_articles(contexts),
+        obligations=list(OBLIGATIONS_BY_RISK.get(risk, [])),
     )
+
+
+def build_jurisdiction_comparison(
+    question: str,
+    *,
+    data_dir: str | Any = "data",
+    jurisdictions: tuple[str, ...] = ("EU", "US", "UK"),
+    top_k: int = 2,
+) -> list[dict[str, str]]:
+    """Element #6 — one sourced, status-labeled block per jurisdiction.
+
+    Deterministic (no extra LLM call): runs one hybrid_search per jurisdiction
+    and reports the top result's title/status/date, exactly the "source, date,
+    statut" discipline the cahier des charges requires (§2) rather than a
+    generalisation across jurisdictions. Computed once per question in
+    self_consistency(), not once per self-consistency variant, since it does
+    not depend on LLM variance.
+    """
+    blocks: list[dict[str, str]] = []
+    for jurisdiction in jurisdictions:
+        try:
+            results = hybrid_search(question, top_k=top_k, data_dir=data_dir, jurisdiction=jurisdiction)
+        except Exception:
+            results = []
+        if not results:
+            blocks.append({
+                "jurisdiction": jurisdiction,
+                "statement": "aucune preuve recuperee pour cette juridiction",
+                "status": "inconnu",
+            })
+            continue
+        top = results[0]
+        doc = top.document
+        blocks.append({
+            "jurisdiction": jurisdiction,
+            "statement": f"{doc.title} ({doc.source}, {doc.date or UNKNOWN_DATE})",
+            "status": doc.status or "statut non renseigné",
+        })
+    return blocks
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -212,7 +311,7 @@ Etape 1: [premier raisonnement]
 Etape 2: [second raisonnement]
 Etape 3: [reconciliation des contradictions ou nuances entre juridictions]
 
-CONCLUSION: Niveau de risque probable: {NIVEAU}. Obligation principale: [obligation en une phrase].
+CONCLUSION: Niveau de risque probable: {NIVEAU}.
 
 Regles absolues:
 - {NIVEAU} doit etre EXACTEMENT un des quatre mots suivants : interdit, eleve, limite, minimal.
@@ -232,9 +331,7 @@ ANALYSE:
 Etape 1: Le cas decrit correspond exactement a un systeme de scoring de credit.
 Etape 2: L'Annexe III liste explicitement ce cas comme haut risque.
 Etape 3: Aucune contradiction entre juridictions sur ce point precis.
-CONCLUSION: Niveau de risque probable: eleve. Obligation principale: mettre en place la
-gestion des risques, la documentation technique et la supervision humaine prevues aux
-articles 9 a 15.
+CONCLUSION: Niveau de risque probable: eleve.
 """
 
 CRITIC_SYSTEM_PROMPT = """Tu es un critique independant qui verifie une analyse de
@@ -255,15 +352,28 @@ Ligne 2 : une phrase courte justifiant la decision.
 """
 
 
+def prompt_fingerprint() -> str:
+    """Short sha256 of the reasoning system prompts (synthesis + critic).
+
+    Lab B4 versioning rule: the agent version must change whenever the prompts
+    change, so behaviour drift is traceable. observability.py folds this into
+    AGENT_VERSION -- edit either prompt above and the logged version shifts
+    automatically, with no manual version bump.
+    """
+    material = (SYNTHESIS_SYSTEM_PROMPT + "\x00" + CRITIC_SYSTEM_PROMPT).encode("utf-8")
+    return hashlib.sha256(material).hexdigest()[:12]
+
+
 def _build_context_block(contexts: list[SearchResult]) -> str:
     if not contexts:
         return "(aucune preuve recuperee)"
     lines = []
     for result in contexts[:5]:
         doc = result.document
+        safe_text = guardrails.sanitise_tool_result(doc.text[:500], max_chars=500)
         lines.append(
             f"- [{doc.jurisdiction or '?'} | statut: {doc.status or 'inconnu'} | "
-            f"date: {doc.date or UNKNOWN_DATE}] {doc.title}: {doc.text[:500]}"
+            f"date: {doc.date or UNKNOWN_DATE}] {doc.title}: {safe_text}"
         )
     return "\n".join(lines)
 
@@ -319,7 +429,7 @@ def llm_synthesize_once(
     parsed = _parse_conclusion(raw)
     if parsed is None:
         return None
-    _, conclusion = parsed
+    canonical_risk, conclusion = parsed
     evidence_text = _extract_section(raw, "PREUVES", ["ANALYSE", "CONCLUSION"])
     analysis_text = _extract_section(raw, "ANALYSE", ["CONCLUSION"])
     evidence = [
@@ -338,6 +448,12 @@ def llm_synthesize_once(
         input_fields=input_fields,
         missing_information=missing_information,
         candidate_conclusions=[conclusion],
+        # Grounded deterministically rather than trusting the LLM's own claim
+        # of which articles/obligations apply -- same anti-hallucination
+        # discipline as the rest of the pipeline (see extract_relevant_articles
+        # and OBLIGATIONS_BY_RISK above).
+        relevant_articles=extract_relevant_articles(contexts),
+        obligations=list(OBLIGATIONS_BY_RISK.get(canonical_risk, [])),
     )
 
 
@@ -374,6 +490,8 @@ def self_consistency(
     k: int = 3,
     *,
     tracer: Any | None = None,
+    data_dir: str | Any = "data",
+    compare_jurisdictions: bool = True,
 ) -> ReasonedAnswer:
     k = max(1, int(k))
     use_llm = llm_client.is_available()
@@ -410,6 +528,18 @@ def self_consistency(
     )
     confidence = _confidence_from_vote(vote_count, k)
     justification = f"{vote_count}/{k} conclusions concordantes"
+
+    # Element #6 — computed once per question (deterministic, not subject to
+    # LLM variance), not once per self-consistency variant.
+    jurisdiction_comparison: list[dict[str, str]] = []
+    if compare_jurisdictions:
+        span_name = "reasoning.jurisdiction_comparison"
+        if tracer is None:
+            jurisdiction_comparison = build_jurisdiction_comparison(question, data_dir=data_dir)
+        else:
+            with tracer.span(span_name, {"jurisdictions": "EU,US,UK"}):
+                jurisdiction_comparison = build_jurisdiction_comparison(question, data_dir=data_dir)
+
     return ReasonedAnswer(
         evidence=selected.evidence,
         analysis=selected.analysis,
@@ -422,6 +552,9 @@ def self_consistency(
         input_fields=selected.input_fields,
         missing_information=selected.missing_information,
         candidate_conclusions=[candidate.conclusion for candidate in candidates],
+        relevant_articles=selected.relevant_articles,
+        obligations=selected.obligations,
+        jurisdiction_comparison=jurisdiction_comparison,
     )
 
 
@@ -449,6 +582,21 @@ def format_answer(answer: ReasonedAnswer) -> str:
         for label in REQUIRED_INPUT_FIELDS
     )
     missing = "\n".join(f"- {item}" for item in answer.missing_information) or "- aucun champ manquant détecté"
+    articles = (
+        "\n".join(f"- {item}" for item in answer.relevant_articles)
+        or "- aucun article ou annexe identifie dans les preuves recuperees"
+    )
+    obligations = (
+        "\n".join(f"- {item}" for item in answer.obligations)
+        or "- aucune obligation specifique determinee"
+    )
+    if answer.jurisdiction_comparison:
+        comparison = "\n".join(
+            f"- {block['jurisdiction']} (statut: {block['status']}) : {block['statement']}"
+            for block in answer.jurisdiction_comparison
+        )
+    else:
+        comparison = "- comparaison juridictionnelle non calculee pour cette reponse"
     return (
         "PREUVES\n"
         f"{evidence}\n\n"
@@ -458,8 +606,14 @@ def format_answer(answer: ReasonedAnswer) -> str:
         f"{missing}\n\n"
         "ANALYSE\n"
         f"{answer.analysis}\n\n"
+        "ARTICLES ET ANNEXES PERTINENTS\n"
+        f"{articles}\n\n"
         "CONCLUSION\n"
         f"{answer.conclusion}\n\n"
+        "OBLIGATIONS APPLICABLES\n"
+        f"{obligations}\n\n"
+        "COMPARAISON EU / US / UK\n"
+        f"{comparison}\n\n"
         "CONFIANCE\n"
         f"{answer.confidence:.1f} ({answer.confidence_justification})\n\n"
         f"CRITIC_VERDICT\n{parse_critic_verdict(answer.critic_verdict)}"

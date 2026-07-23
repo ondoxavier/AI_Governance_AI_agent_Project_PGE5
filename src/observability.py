@@ -23,6 +23,24 @@ from uuid import uuid4
 SENSITIVE_KEYS = {"key", "secret", "token", "password", "authorization"}
 
 
+def _resolve_agent_version() -> str:
+    """Compose AGENT_VERSION from the env base and the reasoning prompt hash.
+
+    Lab B4 versioning: the version must move when the system prompts change.
+    The base ("local-dev" or whatever AGENT_VERSION is set to) is kept for the
+    release identity; the prompt fingerprint is appended so prompt drift is
+    detectable in traces without a manual bump. The import is lazy and guarded
+    so observability stays usable even if reasoning cannot be imported.
+    """
+    base = os.getenv("AGENT_VERSION", "local-dev") or "local-dev"
+    try:
+        from reasoning import prompt_fingerprint
+
+        return f"{base}+p{prompt_fingerprint()}"
+    except Exception:
+        return base
+
+
 def _safe_metadata(metadata: Mapping[str, Any] | None) -> dict[str, Any]:
     """Return metadata safe for tracing by dropping obvious secret fields."""
     safe: dict[str, Any] = {}
@@ -51,7 +69,7 @@ class Tracer:
     """Span recorder backed by Langfuse when configured, otherwise local logs."""
 
     def __init__(self, trace_name: str = "agent.run", metadata: Mapping[str, Any] | None = None):
-        self.agent_version = os.getenv("AGENT_VERSION", "local-dev") or "local-dev"
+        self.agent_version = _resolve_agent_version()
         self.trace_id = str(uuid4())
         self.provider = "local"
         self.events: list[TraceEvent] = []

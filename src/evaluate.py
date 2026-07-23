@@ -10,6 +10,7 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass
 from pathlib import Path
 import json
+import re
 import time
 import unicodedata
 
@@ -164,6 +165,76 @@ def faithfulness(answer: str, results: list[SearchResult]) -> float:
     return supported / len(answer_tokens)
 
 
+# ══════════════════════════════════════════════════════════════════════════════
+#  LLM-judge for the two semantic answer-quality metrics (faithfulness +
+#  answer_relevancy). The word-overlap proxies above systematically under-score
+#  correct French answers grounded in a mostly-English corpus (the terms match
+#  in meaning, not in surface form). A judge model reads for meaning instead.
+#  Falls back to the deterministic proxies when no LLM key is set or a call
+#  fails, so the harness still runs end-to-end from a fresh clone.
+# ══════════════════════════════════════════════════════════════════════════════
+
+JUDGE_SYSTEM_PROMPT = """Tu es un juge d'evaluation RAG rigoureux et impartial.
+On te donne une QUESTION, une REPONSE produite par un agent, et le CONTEXTE
+documentaire reellement recupere.
+
+Evalue deux criteres, chacun sur une echelle continue de 0.0 a 1.0 :
+
+1. faithfulness (fidelite) : chaque affirmation factuelle de la REPONSE est-elle
+   soutenue par le CONTEXTE ? 1.0 = tout est appuye par le contexte ; 0.0 = la
+   reponse invente des faits absents du contexte. Ignore les phrases de
+   disclaimer generiques (validation humaine, etc.).
+
+2. answer_relevancy (pertinence) : la REPONSE repond-elle directement et
+   completement a la QUESTION ? 1.0 = reponse ciblee et complete ; 0.0 = hors
+   sujet ou vide.
+
+Reponds UNIQUEMENT avec un objet JSON sur une seule ligne, sans aucun texte
+autour :
+{"faithfulness": <nombre 0.0-1.0>, "answer_relevancy": <nombre 0.0-1.0>, "justification": "<une phrase courte>"}
+"""
+
+
+def _clamp_unit(value: float) -> float:
+    return min(1.0, max(0.0, float(value)))
+
+
+def llm_judge_answer(question: str, answer: str, results: list[SearchResult]) -> dict | None:
+    """Score (faithfulness, answer_relevancy) with the critic LLM in one call.
+
+    Returns a dict with both scores in [0, 1] plus the judge's one-line
+    justification, or None on any failure (no key, network error, unparsable
+    output) so the caller falls back to the deterministic proxies.
+    """
+    if not llm_client.is_available():
+        return None
+    context = "\n".join(f"- {result.document.text[:600]}" for result in results) or "(aucun contexte)"
+    user_prompt = f"QUESTION:\n{question}\n\nREPONSE:\n{answer}\n\nCONTEXTE:\n{context}"
+    raw = llm_client.chat(
+        JUDGE_SYSTEM_PROMPT,
+        user_prompt,
+        model=llm_client.get_critic_model(),
+        temperature=0.0,  # judge should be as reproducible as the model allows
+        max_tokens=200,
+    )
+    if not raw:
+        return None
+    match = re.search(r"\{.*\}", raw, re.DOTALL)
+    if not match:
+        return None
+    try:
+        data = json.loads(match.group())
+        faith = _clamp_unit(data["faithfulness"])
+        relevancy = _clamp_unit(data["answer_relevancy"])
+    except (ValueError, KeyError, TypeError):
+        return None
+    return {
+        "faithfulness": round(faith, 4),
+        "answer_relevancy": round(relevancy, 4),
+        "justification": str(data.get("justification", ""))[:200],
+    }
+
+
 def average(rows: list[dict], key: str) -> float:
     return sum(float(row[key]) for row in rows) / max(1, len(rows))
 
@@ -173,6 +244,7 @@ def evaluate() -> dict:
     total_tool_calls: dict[str, int] = {}
     total_latency = 0.0
     token_budget_triggered = False
+    judge_rows_llm = 0  # how many rows got their answer-quality scores from the LLM judge
     llm_client.reset_usage()  # isolate this run's cost from any prior calls in-process
 
     for case in EVAL_CASES:
@@ -199,6 +271,25 @@ def evaluate() -> dict:
             if event.name in {"retrieval.search", "guardrail.l4"}:
                 total_tool_calls[event.name] = total_tool_calls.get(event.name, 0) + 1
 
+        # Answer-quality metrics: prefer the LLM judge, fall back per side to the
+        # deterministic word-overlap proxies when the judge is unavailable/fails.
+        baseline_judge = llm_judge_answer(case.question, baseline_answer, baseline)
+        final_judge = llm_judge_answer(case.question, answer, final)
+        if baseline_judge is not None and final_judge is not None:
+            judge_rows_llm += 1
+
+        if baseline_judge is not None:
+            b_faith, b_rel = baseline_judge["faithfulness"], baseline_judge["answer_relevancy"]
+        else:
+            b_faith = round(faithfulness(baseline_answer, baseline), 4)
+            b_rel = round(answer_relevancy(baseline_answer, case.expected_answer_terms), 4)
+
+        if final_judge is not None:
+            f_faith, f_rel = final_judge["faithfulness"], final_judge["answer_relevancy"]
+        else:
+            f_faith = round(faithfulness(answer, final), 4)
+            f_rel = round(answer_relevancy(answer, case.expected_answer_terms), 4)
+
         rows.append(
             {
                 "id": case.id,
@@ -208,12 +299,12 @@ def evaluate() -> dict:
                 "baseline_context_precision": round(context_precision(baseline, case.expected_terms), 4),
                 "final_context_recall": round(context_recall(final, case.expected_terms), 4),
                 "final_context_precision": round(context_precision(final, case.expected_terms), 4),
-                "baseline_faithfulness": round(faithfulness(baseline_answer, baseline), 4),
-                "baseline_answer_relevancy": round(
-                    answer_relevancy(baseline_answer, case.expected_answer_terms), 4
-                ),
-                "final_faithfulness": round(faithfulness(answer, final), 4),
-                "final_answer_relevancy": round(answer_relevancy(answer, case.expected_answer_terms), 4),
+                "baseline_faithfulness": b_faith,
+                "baseline_answer_relevancy": b_rel,
+                "final_faithfulness": f_faith,
+                "final_answer_relevancy": f_rel,
+                "answer_metrics_judge": "llm" if final_judge is not None else "deterministic-proxy",
+                "judge_justification": final_judge["justification"] if final_judge is not None else "",
                 "top_method": final[0].method if final else "none",
             }
         )
@@ -236,9 +327,17 @@ def evaluate() -> dict:
     else:
         cost_note = "Aucune cle DEEPINFRA_API_KEY configuree: fallback deterministe, aucun appel LLM paye."
 
+    if judge_rows_llm == len(EVAL_CASES):
+        judge_backend = "llm"
+    elif judge_rows_llm == 0:
+        judge_backend = "deterministic-proxy"
+    else:
+        judge_backend = f"mixed ({judge_rows_llm}/{len(EVAL_CASES)} rows via LLM judge)"
+
     summary = {
         "num_questions": len(EVAL_CASES),
         "llm_used": llm_used,
+        "answer_metrics_judge": judge_backend,
         "cost_average_usd": round(total_cost_usd / len(EVAL_CASES), 6),
         "cost_total_usd": total_cost_usd,
         "cost_note": cost_note,

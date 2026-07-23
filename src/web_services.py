@@ -8,6 +8,7 @@ from datetime import datetime, timedelta, timezone
 from inspect import signature
 import json
 from pathlib import Path
+import re
 from queue import Empty, Queue
 from threading import RLock
 from time import perf_counter
@@ -38,22 +39,56 @@ def utc_now() -> datetime:
     return datetime.now(timezone.utc)
 
 
+# Status values can themselves contain parentheses (e.g. "obligatoire (etat)"
+# for a US state law) -- a non-greedy .*? correctly matches up to the FIRST
+# ") : " delimiter rather than the first ")", which a [^)]* class would hit
+# too early and fail to match the rest of the line.
+_JURISDICTION_LINE = re.compile(r"^-\s*(\S+)\s*\(statut:\s*(.*?)\)\s*:\s*(.*)$")
+
+
+def _bullet_lines(block: str) -> list[str]:
+    return [line[2:].strip() for line in block.splitlines() if line.startswith("- ")]
+
+
 def parse_sections(answer: str) -> dict[str, Any]:
     """Extract known headings server-side and tolerate missing/malformed blocks."""
-    headings = ["PREUVES", "ANALYSE", "CONCLUSION", "CONFIANCE", "CRITIC_VERDICT", "AVERTISSEMENTS", "DISCLAIMER", "METADATA"]
-    positions = [(answer.find(f"\n{heading}\n"), heading) for heading in headings]
-    positions = sorted((index + 1, heading) for index, heading in positions if index >= 0)
+    headings = [
+        "PREUVES", "CHAMPS D'ENTREE", "INFORMATIONS MANQUANTES", "ANALYSE",
+        "ARTICLES ET ANNEXES PERTINENTS", "CONCLUSION", "OBLIGATIONS APPLICABLES",
+        "COMPARAISON EU / US / UK", "CONFIANCE", "CRITIC_VERDICT",
+        "AVERTISSEMENTS", "DISCLAIMER", "METADATA",
+    ]
+    # format_answer()'s output starts with "PREUVES\n" as its literal first
+    # characters (no leading newline) -- searching for "\n{heading}\n" alone
+    # would never match that first heading. Padding with one leading newline
+    # lets the same lookup handle both the first heading and every later one.
+    padded = "\n" + answer
+    positions = [(padded.find(f"\n{heading}\n"), heading) for heading in headings]
+    positions = sorted((index, heading) for index, heading in positions if index >= 0)
     blocks: dict[str, str] = {}
     for index, (start, heading) in enumerate(positions):
         body_start = start + len(heading) + 1
         body_end = positions[index + 1][0] if index + 1 < len(positions) else len(answer)
         blocks[heading] = answer[body_start:body_end].strip()
-    evidence = [line[2:].strip() for line in blocks.get("PREUVES", "").splitlines() if line.startswith("- ")]
+
+    jurisdiction_comparison = []
+    for line in _bullet_lines(blocks.get("COMPARAISON EU / US / UK", "")):
+        match = _JURISDICTION_LINE.match(f"- {line}")
+        if match:
+            jurisdiction_comparison.append({
+                "jurisdiction": match.group(1),
+                "status": match.group(2).strip(),
+                "statement": match.group(3).strip(),
+            })
+
     return {
-        "evidence": evidence,
+        "evidence": _bullet_lines(blocks.get("PREUVES", "")),
         "analysis": blocks.get("ANALYSE", ""),
         "conclusion": blocks.get("CONCLUSION", ""),
         "confidence": blocks.get("CONFIANCE", ""),
+        "relevant_articles": _bullet_lines(blocks.get("ARTICLES ET ANNEXES PERTINENTS", "")),
+        "obligations": _bullet_lines(blocks.get("OBLIGATIONS APPLICABLES", "")),
+        "jurisdiction_comparison": jurisdiction_comparison,
     }
 
 

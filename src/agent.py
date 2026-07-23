@@ -9,7 +9,7 @@ falls back to LocalTracer-compatible console spans when Langfuse is absent.
 from __future__ import annotations
 
 from contextlib import contextmanager
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 import re
 import sys
@@ -236,6 +236,9 @@ def _with_visible_critic(answer: ReasonedAnswer, raw_verdict: str) -> ReasonedAn
         input_fields=answer.input_fields,
         missing_information=answer.missing_information,
         candidate_conclusions=answer.candidate_conclusions,
+        relevant_articles=answer.relevant_articles,
+        obligations=answer.obligations,
+        jurisdiction_comparison=answer.jurisdiction_comparison,
     )
 
 
@@ -390,6 +393,7 @@ def run_agent(
                         contexts,
                         k=self_consistency_k,
                         tracer=safe_tracer,
+                        data_dir=data_dir or "data",
                     )
                 except Exception as exc:
                     warnings.append(f"Reasoning indisponible: {exc.__class__.__name__}: {exc}")
@@ -429,12 +433,19 @@ def run_agent(
                     warnings.append("Le critique a demande une revision; une seule tentative a ete executee.")
                     with safe_tracer.span("reasoning.revision", {"max_revision": 1}):
                         try:
+                            # Jurisdiction comparison is deterministic and question-
+                            # independent of the risk wording the critic asked to
+                            # revise: skip recomputing it (3 extra retrieval calls
+                            # for no new information) and carry the original over.
                             revised = self_consistency(
                                 revision_question,
                                 contexts,
                                 k=self_consistency_k,
                                 tracer=safe_tracer,
+                                data_dir=data_dir or "data",
+                                compare_jurisdictions=False,
                             )
+                            revised = replace(revised, jurisdiction_comparison=reasoned.jurisdiction_comparison)
                         except Exception as exc:
                             revised = reasoned
                             warnings.append(f"Revision indisponible: {exc.__class__.__name__}: {exc}")
